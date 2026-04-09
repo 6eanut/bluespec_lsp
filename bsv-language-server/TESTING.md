@@ -110,8 +110,69 @@ Test fixture files are located in `test_fixtures/`:
 
 - `correct.bsv` - Syntactically correct BSV code
 - `broken.bsv` - BSV code with intentional syntax errors
+- `constants.bsv` - #define constant definitions for testing constant expansion
 
 These can be used for manual testing or integration tests.
+
+## Constant Expansion Tests
+
+The constant expansion module (`src/constant_expansion/`) has comprehensive tests for:
+
+### Supported Type Functions
+
+| Function | Description | Example |
+|----------|-------------|--------|
+| `TAdd#(a, b)` | Addition | `TAdd#(2, 3) = 5` |
+| `TSub#(a, b)` | Subtraction | `TSub#(10, 3) = 7` |
+| `TMul#(a, b)` | Multiplication | `TMul#(4, 5) = 20` |
+| `TDiv#(a, b)` | Division | `TDiv#(20, 4) = 5` |
+| `TLog#(n)` | Log base 2 | `TLog#(256) = 8` |
+| `TExp#(n)` | 2^n | `TExp#(3) = 8` |
+| `TMax#(a, b)` | Maximum | `TMax#(5, 10) = 10` |
+| `TMin#(a, b)` | Minimum | `TMin#(5, 10) = 5` |
+
+### Running Constant Expansion Tests
+
+```bash
+# Run all constant expansion tests
+cargo test constant_expansion
+
+# Run with verbose output
+cargo test constant_expansion -- --nocapture
+```
+
+### Example: Hover Behavior
+
+When hovering over a constant like `BAR` in:
+
+```bsv
+#define 2 FOO;
+#define TAdd#(FOO, 1) BAR;
+```
+
+The hover will show:
+
+```
+**BAR** = `3`
+
+```
+BAR = TAdd#(FOO, 1)
+|- FOO = 2
+|- Result: 3
+```
+```
+
+### Test Cases for Constant Expansion
+
+The test suite includes tests for:
+
+1. **Simple numeric constants** - Direct numeric values
+2. **Type function constants** - TAdd, TSub, TMul, TDiv, TLog, TExp, TMax, TMin
+3. **Nested expansion** - Constants defined in terms of other constants
+4. **Complex nested expansion** - Multiple levels of nesting
+5. **Circular reference detection** - Error handling for circular definitions
+6. **Undefined constant handling** - Error handling for missing definitions
+7. **Position-based lookup** - Finding constants at cursor position
 
 ## How Error Recovery Works
 

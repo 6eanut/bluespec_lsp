@@ -52,19 +52,25 @@ function activate(context) {
     }
     // 确定服务器路径
     let serverModule;
+    const fs = require('fs');
+    const defaultPaths = [
+        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', 'bsv-language-server')),
+        context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server')),
+    ];
     if (serverPath && serverPath.trim() !== '') {
         // 使用用户指定的路径
         serverModule = serverPath;
     }
     else {
-        // 使用默认路径（相对路径）
-        serverModule = context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server'));
+        // 使用默认路径列表，优先本仓库实际构建输出
+        const foundPath = defaultPaths.find((p) => fs.existsSync(p));
+        serverModule = foundPath || defaultPaths[0];
     }
     console.log(`Using server module: ${serverModule}`);
     // 如果服务器模块不存在，尝试从系统PATH查找
-    const fs = require('fs');
     if (!fs.existsSync(serverModule)) {
-        serverModule = 'bsv-language-server'; // 回退到系统PATH
+        console.warn(`BSV language server executable not found at ${serverModule}, falling back to PATH lookup.`);
+        serverModule = 'bsv-language-server';
     }
     // 服务器选项
     const serverOptions = {

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::{BsvParser, SymbolTable, utils};
+use crate::constant_expansion::{ConstantParser, ConstantEvaluator};
 
 type LspResult<T> = std::result::Result<T, tower_lsp::jsonrpc::Error>;
 
@@ -142,6 +143,17 @@ impl Backend {
             None
         }
     }
+    
+    fn find_word_start(&self, line: &str, character: usize) -> usize {
+        let mut start = character;
+        
+        // 向左扩展找到单词开始
+        while start > 0 && (line.chars().nth(start - 1).map_or(false, |c| c.is_alphanumeric() || c == '_')) {
+            start -= 1;
+        }
+        
+        start
+    }
 }
 
 #[async_trait]
@@ -151,8 +163,11 @@ impl LanguageServer for Backend {
         
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
+                // Use full document sync because hover and constant expansion
+                // operate on the complete text. Incremental sync would require
+                // applying edits manually, which is not currently implemented.
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::INCREMENTAL,
+                    TextDocumentSyncKind::FULL,
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
@@ -197,6 +212,7 @@ impl LanguageServer for Backend {
         
         debug!("Document changed: {}", uri);
         
+        // With full sync, the change payload contains the full updated document text.
         if let Some(change) = changes.last() {
             if let Err(e) = self.update_document(&uri, &change.text).await {
                 warn!("Error updating document {}: {}", uri, e);
@@ -297,8 +313,117 @@ impl LanguageServer for Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         
-        debug!("Hover request: {} at {:?}", uri, position);
+        info!("Hover request: {} at line={}, char={}", uri, position.line, position.character);
         
+        // First, try to find and expand a constant at this position
+        let documents = self.documents.read().await;
+        if let Some(text) = documents.get(&uri) {
+            info!("Document found, length={}", text.len());
+            let const_parser = ConstantParser::new();
+            let all_constant_defs: Vec<_> = documents
+                .values()
+                .flat_map(|doc_text| const_parser.parse(doc_text))
+                .collect();
+            let all_evaluator = ConstantEvaluator::new(all_constant_defs.clone());
+            
+            // Method 1: Check if we're at a constant definition position
+            if let Some(const_def) = const_parser.find_constant_at_position(text, position) {
+                info!("Found constant definition: {}", const_def.name);
+                
+                if let Some(result) = all_evaluator.expand(&const_def.name) {
+                    let hover_text = if result.success {
+                        format!(
+                            "**{}** = `{}`\n\n```\n{}\n```",
+                            const_def.name,
+                            result.final_value,
+                            result.format_trace()
+                        )
+                    } else {
+                        format!(
+                            "**{}** = `{}`\n\n⚠️ Could not fully expand",
+                            const_def.name,
+                            const_def.value
+                        )
+                    };
+                    
+                    let contents = HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: hover_text,
+                    });
+                    
+                    return Ok(Some(Hover {
+                        contents,
+                        range: Some(const_def.range),
+                    }));
+                }
+            }
+            
+            // Method 2: Check if the word at cursor is a constant name (usage position)
+            if let Some(line) = utils::get_line_content(text, position.line as usize) {
+                info!("Line content: '{}'", line);
+                if let Some(word) = self.extract_word_at_position(line, position.character as usize) {
+                    info!("Extracted word: '{}'", word);
+                    // Check if this word is a defined constant
+                    let const_def = const_parser
+                        .find_constant_by_name(text, &word)
+                        .or_else(|| all_constant_defs.iter().find(|d| d.name == word).cloned());
+                    if let Some(const_def) = const_def {
+                        info!("Found constant by name: {}", const_def.name);
+                        
+                        if let Some(result) = all_evaluator.expand(&word) {
+                            let hover_text = if result.success {
+                                format!(
+                                    "**{}** = `{}`\n\n```\n{}\n```",
+                                    word,
+                                    result.final_value,
+                                    result.format_trace()
+                                )
+                            } else {
+                                format!(
+                                    "**{}** = `{}`\n\n⚠️ Could not fully expand",
+                                    word,
+                                    const_def.value
+                                )
+                            };
+                            
+                            let contents = HoverContents::Markup(MarkupContent {
+                                kind: MarkupKind::Markdown,
+                                value: hover_text,
+                            });
+                            
+                            // Find word boundaries for range
+                            let word_start = self.find_word_start(line, position.character as usize);
+                            let word_range = Range {
+                                start: Position {
+                                    line: position.line,
+                                    character: word_start as u32,
+                                },
+                                end: Position {
+                                    line: position.line,
+                                    character: (word_start + word.len()) as u32,
+                                },
+                            };
+                            
+                            return Ok(Some(Hover {
+                                contents,
+                                range: Some(word_range),
+                            }));
+                        }
+                    } else {
+                        info!("Constant '{}' not found in document or open documents", word);
+                    }
+                } else {
+                    info!("No word extracted at position {}", position.character);
+                }
+            } else {
+                info!("No line content found at line {}", position.line);
+            }
+        } else {
+            info!("Document not found: {}", uri);
+        }
+        drop(documents);
+        
+        // Fall back to symbol hover
         let symbol_table = self.symbol_table.read().await;
         
         if let Some(symbol) = symbol_table.find_symbol_at_position(&uri, position) {
