@@ -1,0 +1,28 @@
+# Exclude build artifacts and source files that are not needed in the packaged extension
+target/**
+.git/**
+.vscode/**
+scripts/**
+Cargo.toml
+Cargo.lock
+src/**
+**/*.rs
+**/*.ts
+test_fixtures/**
+README.zh-CN.md
+package-lock.json
+node_modules/.bin/**
+# Exclude build artifacts and source files that are not needed in the packaged extension
+target/**
+.git/**
+.vscode/**
+scripts/**
+Cargo.toml
+Cargo.lock
+src/**
+**/*.rs
+**/*.ts
+test_fixtures/**
+README.zh-CN.md
+package-lock.json
+node_modules/.bin/**

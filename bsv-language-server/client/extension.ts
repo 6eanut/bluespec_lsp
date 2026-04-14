@@ -21,18 +21,20 @@ export function activate(context: vscode.ExtensionContext) {
     // 确定服务器路径
     let serverModule: string;
     const fs = require('fs');
-    const defaultPaths = [
-        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', 'bsv-language-server')),
-        context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server')),
-    ];
+    const serverName = process.platform === 'win32' ? 'bsv-language-server.exe' : 'bsv-language-server';
+    const platformArch = `${process.platform}-${process.arch}`;
+    const platformPath = context.asAbsolutePath(path.join('server', platformArch, serverName));
+    const legacyPath = context.asAbsolutePath(path.join('server', serverName));
 
     if (serverPath && serverPath.trim() !== '') {
         // 使用用户指定的路径
         serverModule = serverPath;
+    } else if (fs.existsSync(platformPath)) {
+        // 优先使用当前平台对应的服务器二进制
+        serverModule = platformPath;
     } else {
-        // 使用默认路径列表，优先本仓库实际构建输出
-        const foundPath = defaultPaths.find((p: string) => fs.existsSync(p));
-        serverModule = foundPath || defaultPaths[0];
+        // 回退到旧兼容路径
+        serverModule = legacyPath;
     }
     
     console.log(`Using server module: ${serverModule}`);

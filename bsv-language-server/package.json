@@ -3,7 +3,7 @@
   "displayName": "BSV Language Server",
   "description": "Bluespec SystemVerilog Language Server for VSCode",
   "version": "0.1.0",
-  "publisher": "Jiakai Xu",
+  "publisher": "Jiakai-Xu",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -16,6 +16,14 @@
     "onLanguage:bsv"
   ],
   "main": "./client/out/extension.js",
+  "files": [
+    "client/out/**",
+    "syntaxes/**",
+    "language-configuration.json",
+    "server/**",
+    "README.md",
+    "package.json"
+  ],
   "contributes": {
     "languages": [
       {
@@ -76,14 +84,34 @@
   },
   "scripts": {
     "compile": "tsc -p ./client",
+    "build:server": "cargo build --release",
+    "copy:server": "node ./scripts/copy-server.js",
+    "build:server:linux-x64": "cargo build --release --target x86_64-unknown-linux-gnu",
+    "build:server:linux-arm64": "cargo build --release --target aarch64-unknown-linux-gnu",
+    "build:server:darwin-x64": "cargo build --release --target x86_64-apple-darwin",
+    "build:server:darwin-arm64": "cargo build --release --target aarch64-apple-darwin",
+    "build:server:win32-x64": "cargo build --release --target x86_64-pc-windows-gnu",
+    "build:server:win32-arm64": "cargo build --release --target aarch64-pc-windows-gnu",
+    "copy:server:linux-x64": "mkdir -p server/linux-x64 && cp target/x86_64-unknown-linux-gnu/release/bsv-language-server server/linux-x64/ && chmod +x server/linux-x64/bsv-language-server",
+    "copy:server:linux-arm64": "mkdir -p server/linux-arm64 && cp target/aarch64-unknown-linux-gnu/release/bsv-language-server server/linux-arm64/ && chmod +x server/linux-arm64/bsv-language-server",
+    "copy:server:darwin-x64": "mkdir -p server/darwin-x64 && cp target/x86_64-apple-darwin/release/bsv-language-server server/darwin-x64/ && chmod +x server/darwin-x64/bsv-language-server",
+    "copy:server:darwin-arm64": "mkdir -p server/darwin-arm64 && cp target/aarch64-apple-darwin/release/bsv-language-server server/darwin-arm64/ && chmod +x server/darwin-arm64/bsv-language-server",
+    "copy:server:win32-x64": "mkdir -p server/win32-x64 && cp target/x86_64-pc-windows-gnu/release/bsv-language-server.exe server/win32-x64/",
+    "copy:server:win32-arm64": "mkdir -p server/win32-arm64 && cp target/aarch64-pc-windows-gnu/release/bsv-language-server.exe server/win32-arm64/",
+    "copy:all-servers": "npm run copy:server:linux-x64 && npm run copy:server:linux-arm64 && npm run copy:server:darwin-x64 && npm run copy:server:darwin-arm64 && npm run copy:server:win32-x64 && npm run copy:server:win32-arm64",
+    "build:all-servers": "npm run build:server:linux-x64 && npm run build:server:linux-arm64 && npm run build:server:darwin-x64 && npm run build:server:darwin-arm64 && npm run build:server:win32-x64 && npm run build:server:win32-arm64",
+    "build:extension": "npm run compile && npm run build:server && npm run copy:server",
+    "build:extension:all-platforms": "npm run compile && npm run build:all-servers && npm run copy:all-servers",
     "watch": "tsc -watch -p ./client",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run build:extension",
+    "package": "npx vsce package --dependencies --allow-missing-repository --skip-license",
+    "package:all-platforms": "npm run compile && npm run copy:all-servers && npx vsce package --dependencies --allow-missing-repository --skip-license --out bsv-language-server-all-platforms.vsix"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.9.3",
-    "vscode-languageclient": "^9.0.0"
+    "@vscode/vsce": "^2.0.0"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.0"
