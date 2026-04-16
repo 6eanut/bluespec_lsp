@@ -1,0 +1,110 @@
+name: Release BSV LSP Extension
+
+on:
+  push:
+    tags:
+      - 'v*'  # 匹配版本标签，如 v1.0.0, v0.1.0
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest  # 使用macOS arm64 runner
+    permissions:
+      contents: write  # 需要权限来创建Release
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取所有历史记录，用于版本信息
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'  # 使用Node.js 20
+        cache: 'npm'
+        cache-dependency-path: 'bsv-language-server/package-lock.json'
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: aarch64-apple-darwin  # macOS arm64目标
+
+    - name: Install dependencies
+      run: |
+        cd bsv-language-server
+        npm ci  # 使用clean install确保依赖一致性
+
+    - name: Compile TypeScript client
+      run: |
+        cd bsv-language-server
+        npm run compile
+
+    - name: Build Rust server
+      run: |
+        cd bsv-language-server
+        # 安装必要的构建依赖
+        rustup target add aarch64-apple-darwin
+        # 构建发布版本
+        cargo build --release --target aarch64-apple-darwin
+        # 验证构建结果
+        ls -la target/aarch64-apple-darwin/release/bsv-language-server
+
+    - name: Prepare server directory for VSIX
+      run: |
+        cd bsv-language-server
+        # 创建server目录（如果不存在）
+        mkdir -p server
+        # 复制服务器可执行文件到server目录
+        cp target/aarch64-apple-darwin/release/bsv-language-server server/
+        # 确保可执行权限
+        chmod +x server/bsv-language-server
+        # 验证文件
+        ls -la server/
+
+    - name: Install vsce
+      run: |
+        cd bsv-language-server
+        npm install -g @vscode/vsce
+
+    - name: Package VSIX
+      run: |
+        cd bsv-language-server
+        # 使用vsce打包扩展
+        vsce package --no-dependencies
+        # 列出生成的VSIX文件
+        ls -la *.vsix
+
+    - name: Get version from tag
+      id: get_version
+      run: |
+        # 从标签名提取版本号（去除v前缀）
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Tag version: $VERSION"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: "BSV Language Server v${{ steps.get_version.outputs.version }}"
+        tag_name: ${{ github.ref_name }}
+        body: |
+          ## BSV Language Server v${{ steps.get_version.outputs.version }}
+
+          ### Changes
+          - Automated release build for macOS arm64
+
+          ### Installation
+          1. Download the `.vsix` file below
+          2. Open VS Code
+          3. Go to Extensions view (Cmd+Shift+X)
+          4. Click the "..." menu and select "Install from VSIX..."
+          5. Select the downloaded file
+
+          ### Notes
+          - This release includes the BSV language server executable for macOS arm64
+          - The extension will automatically use the bundled server
+        draft: false
+        prerelease: false
+        files: |
+          bsv-language-server/*.vsix

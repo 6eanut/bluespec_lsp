@@ -77,13 +77,16 @@
   "scripts": {
     "compile": "tsc -p ./client",
     "watch": "tsc -watch -p ./client",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.9.3",
-    "vscode-languageclient": "^9.0.0"
+    "vscode-languageclient": "^9.0.0",
+    "@vscode/vsce": "^2.26.0"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.0"

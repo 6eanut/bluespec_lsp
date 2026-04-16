@@ -22,6 +22,9 @@ export function activate(context: vscode.ExtensionContext) {
     let serverModule: string;
     const fs = require('fs');
     const defaultPaths = [
+        // 优先查找VSIX包内的服务器可执行文件路径
+        context.asAbsolutePath(path.join('server', 'bsv-language-server')),
+        // 开发环境下的路径
         context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', 'bsv-language-server')),
         context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server')),
     ];
