@@ -105,7 +105,6 @@ jobs:
       run: |
         echo "Note: Windows builds will use pre-compiled or skip tree-sitter library"
         # Windows builds need pre-compiled DLL or skip for now
-        mkdir -p tree-sitter-bsv
         echo "Windows tree-sitter library needs to be pre-compiled separately"
 
     - name: Build Rust language server
@@ -130,6 +129,7 @@ jobs:
         npm run compile
 
     - name: Create platform-specific directory structure
+      shell: bash
       run: |
         mkdir -p bsv-language-server/dist/${{ matrix.artifact_suffix }}
 
@@ -155,7 +155,7 @@ jobs:
         cd bsv-language-server
 
         # Prepare extension for this platform
-        node ../../scripts/prepare-extension.js ${{ matrix.artifact_suffix }}
+        node ../scripts/prepare-extension.js ${{ matrix.artifact_suffix }}
 
         # Install vsce for packaging
         npm install -g @vscode/vsce
