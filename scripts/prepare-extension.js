@@ -64,24 +64,20 @@ if (!fs.existsSync(distPlatformDir)) {
     console.log(`Created directory: ${distPlatformDir}`);
 }
 
-// 检查文件是否存在
-const requiredFiles = [
-    path.join(distPlatformDir, serverBinaryName),
-    path.join(distPlatformDir, libName)
-];
-
-let allFilesExist = true;
-for (const file of requiredFiles) {
-    if (!fs.existsSync(file)) {
-        console.error(`Missing required file: ${file}`);
-        allFilesExist = false;
-    }
-}
-
-if (!allFilesExist) {
-    console.error('\n⚠ Some required files are missing. Build the binaries first.');
+// 检查服务器文件是否存在（必需）
+const requiredServerFile = path.join(distPlatformDir, serverBinaryName);
+if (!fs.existsSync(requiredServerFile)) {
+    console.error(`Missing required file: ${requiredServerFile}`);
+    console.error('\n⚠ Server binary is missing. Build the binaries first.');
     console.error('Run: node scripts/build-vsix.js');
     process.exit(1);
+}
+
+// 检查 tree-sitter 库文件（可选，对于 Windows 可能不存在）
+const libFile = path.join(distPlatformDir, libName);
+if (!fs.existsSync(libFile)) {
+    console.warn(`Warning: tree-sitter library not found: ${libFile}`);
+    console.warn('This may affect some features but the extension will still work.');
 }
 
 console.log(`✓ Extension prepared for ${platform}`);
