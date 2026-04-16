@@ -38,7 +38,12 @@ jobs:
     - name: Compile TypeScript client
       run: |
         cd bsv-language-server
+        # 清理旧的编译输出
+        rm -rf client/out
+        # 重新编译TypeScript
         npm run compile
+        # 验证编译结果
+        ls -la client/out/
 
     - name: Build Rust server
       run: |
@@ -70,10 +75,8 @@ jobs:
     - name: Package VSIX
       run: |
         cd bsv-language-server
-        # 安装所有依赖（包括devDependencies，因为vscode:prepublish需要typescript）
-        npm install
-        # 使用vsce打包扩展（包含依赖）
-        vsce package
+        # 使用vsce打包扩展
+        vsce package --no-dependencies
         # 列出生成的VSIX文件
         ls -la *.vsix
 
