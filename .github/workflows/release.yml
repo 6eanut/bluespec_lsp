@@ -33,7 +33,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd bsv-language-server
-        npm ci  # 使用clean install确保依赖一致性
+        npm install  # 使用install而不是ci，因为package-lock.json可能不同步
 
     - name: Compile TypeScript client
       run: |
