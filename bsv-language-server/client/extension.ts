@@ -21,26 +21,52 @@ export function activate(context: vscode.ExtensionContext) {
     // 确定服务器路径
     let serverModule: string;
     const fs = require('fs');
-    const defaultPaths = [
-        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', 'bsv-language-server')),
-        context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server')),
-    ];
 
     if (serverPath && serverPath.trim() !== '') {
         // 使用用户指定的路径
         serverModule = serverPath;
+        console.log(`Using user-specified server path: ${serverModule}`);
     } else {
-        // 使用默认路径列表，优先本仓库实际构建输出
+        // 尝试从扩展的 dist 目录中查找平台特定的服务器
+        // 首先检测当前平台
+        let platformSuffix = '';
+        if (process.platform === 'win32') {
+            platformSuffix = process.arch === 'arm64' ? 'win32-arm64' : 'win32-x64';
+        } else if (process.platform === 'darwin') {
+            platformSuffix = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+        } else if (process.platform === 'linux') {
+            platformSuffix = process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64';
+        }
+
+        // 构建默认路径列表（优先级顺序）
+        const defaultPaths = [];
+
+        // 1. 扩展打包的服务器（VSIX 安装后）
+        if (platformSuffix) {
+            const bundledServer = context.asAbsolutePath(
+                path.join('dist', platformSuffix, `bsv-language-server${process.platform === 'win32' ? '.exe' : ''}`)
+            );
+            defaultPaths.push(bundledServer);
+            console.log(`Looking for bundled server at: ${bundledServer}`);
+        }
+
+        // 2. 开发环境的路径（用于调试）
+        defaultPaths.push(
+            context.asAbsolutePath(path.join('..', 'target', 'release', `bsv-language-server${process.platform === 'win32' ? '.exe' : ''}`)),
+            context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', `bsv-language-server${process.platform === 'win32' ? '.exe' : ''}`))
+        );
+
+        // 查找存在的路径
         const foundPath = defaultPaths.find((p: string) => fs.existsSync(p));
-        serverModule = foundPath || defaultPaths[0];
-    }
-    
-    console.log(`Using server module: ${serverModule}`);
-    
-    // 如果服务器模块不存在，尝试从系统PATH查找
-    if (!fs.existsSync(serverModule)) {
-        console.warn(`BSV language server executable not found at ${serverModule}, falling back to PATH lookup.`);
-        serverModule = 'bsv-language-server';
+
+        if (foundPath) {
+            serverModule = foundPath;
+            console.log(`Found server at: ${serverModule}`);
+        } else {
+            // 如果都没有找到，回退到系统 PATH
+            console.warn(`BSV language server executable not found in extension bundle. Falling back to PATH lookup.`);
+            serverModule = 'bsv-language-server';
+        }
     }
     
     // 服务器选项

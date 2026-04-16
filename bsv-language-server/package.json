@@ -79,6 +79,15 @@
     "watch": "tsc -watch -p ./client",
     "vscode:prepublish": "npm run compile"
   },
+  "files": [
+    "client/out/**/*.js",
+    "client/out/**/*.js.map",
+    "syntaxes/*.json",
+    "language-configuration.json",
+    "dist/**",
+    "README.md",
+    "LICENSE"
+  ],
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",

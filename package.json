@@ -1,0 +1,36 @@
+{
+  "name": "bluespec-lsp-workspace",
+  "version": "0.1.0",
+  "description": "Bluespec SystemVerilog Language Server Workspace",
+  "private": true,
+  "workspaces": [
+    "bsv-language-server",
+    "tree-sitter-bsv"
+  ],
+  "scripts": {
+    "build": "./build-all-platforms.sh",
+    "test": "echo \"Run tests in subprojects\"",
+    "clean": "rm -rf dist && cd bsv-language-server && cargo clean",
+    "version": "node -e \"console.log('Updating version in subprojects...')\" && ./scripts/update-version.js",
+    "release": "./scripts/create-release.sh"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.15.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/6eanut/bluespec_lsp.git"
+  },
+  "keywords": [
+    "bluespec",
+    "bsv",
+    "language-server",
+    "vscode",
+    "tree-sitter"
+  ],
+  "author": "Jiakai Xu",
+  "license": "MIT"
+}
