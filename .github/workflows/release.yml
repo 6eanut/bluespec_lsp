@@ -70,8 +70,8 @@ jobs:
     - name: Package VSIX
       run: |
         cd bsv-language-server
-        # 确保生产依赖已安装
-        npm install --production
+        # 安装所有依赖（包括devDependencies，因为vscode:prepublish需要typescript）
+        npm install
         # 使用vsce打包扩展（包含依赖）
         vsce package
         # 列出生成的VSIX文件
