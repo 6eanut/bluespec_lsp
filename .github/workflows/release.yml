@@ -1,0 +1,117 @@
+name: Release BSV LSP Extension
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0, v0.1.0
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest  # Windows x86_64 environment
+    permissions:
+      contents: write  # Required to create GitHub Releases
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Get full history for version info
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: 'bsv-language-server/package-lock.json'
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: x86_64-pc-windows-msvc  # Windows x86_64 target
+
+    - name: Install dependencies
+      run: |
+        cd bsv-language-server
+        npm install
+
+    - name: Compile TypeScript client
+      run: |
+        cd bsv-language-server
+        npm run compile
+
+    - name: Build Rust server
+      run: |
+        cd bsv-language-server
+        # Add Windows target
+        rustup target add x86_64-pc-windows-msvc
+        # Build release version for Windows
+        cargo build --release --target x86_64-pc-windows-msvc
+        # Verify build result (PowerShell syntax)
+        if (!(Test-Path "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe")) {
+          Write-Host "Error: Server executable not found"
+          exit 1
+        }
+        Get-ChildItem "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe"
+
+    - name: Prepare server directory for VSIX
+      run: |
+        cd bsv-language-server
+        # Create server directory
+        New-Item -ItemType Directory -Path server -Force
+        # Copy Windows executable to server directory (PowerShell syntax)
+        Copy-Item "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe" -Destination "server/"
+        # Verify copied file
+        Get-ChildItem server/
+
+    - name: Install vsce
+      run: |
+        cd bsv-language-server
+        npm install -g @vscode/vsce
+
+    - name: Package VSIX
+      run: |
+        cd bsv-language-server
+        # Install all dependencies including devDependencies
+        npm install
+        # Package extension with bundled server
+        vsce package
+        # List generated VSIX file (PowerShell syntax)
+        Get-ChildItem *.vsix
+
+    - name: Get version from tag
+      id: get_version
+      run: |
+        # Extract version from tag (remove v prefix)
+        $version = "${{ github.ref_name }}".Substring(1)
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "Tag version: $version"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: "BSV Language Server v${{ steps.get_version.outputs.version }}"
+        tag_name: ${{ github.ref_name }}
+        body: |
+          ## BSV Language Server v${{ steps.get_version.outputs.version }}
+
+          ### Features
+          - Symbol navigation (go-to-definition, document symbols)
+          - Constant expansion with hover documentation
+          - Syntax highlighting and error recovery
+          - Windows x86_64 native support
+
+          ### Installation
+          1. Download the `.vsix` file below
+          2. Open VS Code
+          3. Go to Extensions view (Ctrl+Shift+X)
+          4. Click "..." menu and select "Install from VSIX..."
+          5. Select the downloaded file
+
+          ### Notes
+          - This release includes the BSV language server executable for Windows x86_64
+          - The extension will automatically use the bundled server - no additional configuration needed
+        draft: false
+        prerelease: false
+        files: |
+          bsv-language-server/*.vsix
