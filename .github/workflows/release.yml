@@ -47,22 +47,22 @@ jobs:
         rustup target add x86_64-pc-windows-msvc
         # Build release version for Windows
         cargo build --release --target x86_64-pc-windows-msvc
-        # Verify build result
-        if not exist "target\x86_64-pc-windows-msvc\release\bsv-language-server.exe" (
-          echo "Error: Server executable not found"
+        # Verify build result (PowerShell syntax)
+        if (!(Test-Path "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe")) {
+          Write-Host "Error: Server executable not found"
           exit 1
-        )
-        dir "target\x86_64-pc-windows-msvc\release\bsv-language-server.exe"
+        }
+        Get-ChildItem "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe"
 
     - name: Prepare server directory for VSIX
       run: |
         cd bsv-language-server
         # Create server directory
-        mkdir server
-        # Copy Windows executable to server directory
-        copy "target\x86_64-pc-windows-msvc\release\bsv-language-server.exe" server\
+        New-Item -ItemType Directory -Path server -Force
+        # Copy Windows executable to server directory (PowerShell syntax)
+        Copy-Item "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe" -Destination "server/"
         # Verify copied file
-        dir server\
+        Get-ChildItem server/
 
     - name: Install vsce
       run: |
@@ -76,8 +76,8 @@ jobs:
         npm install
         # Package extension with bundled server
         vsce package
-        # List generated VSIX file
-        dir *.vsix
+        # List generated VSIX file (PowerShell syntax)
+        Get-ChildItem *.vsix
 
     - name: Get version from tag
       id: get_version
