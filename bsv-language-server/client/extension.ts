@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as vscodelc from 'vscode-languageclient';
+import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
-let client: vscodelc.LanguageClient;
+let client: LanguageClient;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('BSV Language Server extension is now active!');
@@ -50,21 +50,21 @@ export function activate(context: vscode.ExtensionContext) {
     }
     
     // 服务器选项
-    const serverOptions: vscodelc.ServerOptions = {
+    const serverOptions: ServerOptions = {
         run: {
             command: serverModule,
             args: [],
-            transport: vscodelc.TransportKind.stdio
+            transport: TransportKind.stdio
         },
         debug: {
             command: serverModule,
             args: ['--debug'],
-            transport: vscodelc.TransportKind.stdio
+            transport: TransportKind.stdio
         }
     };
     
     // 客户端选项
-    const clientOptions: vscodelc.LanguageClientOptions = {
+    const clientOptions: LanguageClientOptions = {
         documentSelector: [
             { scheme: 'file', language: 'bsv' },
             { scheme: 'untitled', language: 'bsv' }
@@ -88,7 +88,7 @@ export function activate(context: vscode.ExtensionContext) {
     };
     
     // 创建语言客户端
-    client = new vscodelc.LanguageClient(
+    client = new LanguageClient(
         'bsvLanguageServer',
         'BSV Language Server',
         serverOptions,
