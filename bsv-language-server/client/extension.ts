@@ -21,16 +21,22 @@ export function activate(context: vscode.ExtensionContext) {
     // 确定服务器路径
     let serverModule: string;
     const fs = require('fs');
+
+    // Determine executable name based on platform
+    const isWindows = process.platform === 'win32';
+    const serverExecutableName = isWindows ? 'bsv-language-server.exe' : 'bsv-language-server';
+
     const defaultPaths = [
-        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', 'bsv-language-server')),
-        context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server')),
+        context.asAbsolutePath(path.join('server', serverExecutableName)),
+        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', serverExecutableName)),
+        context.asAbsolutePath(path.join('..', 'target', 'release', serverExecutableName)),
     ];
 
     if (serverPath && serverPath.trim() !== '') {
         // 使用用户指定的路径
         serverModule = serverPath;
     } else {
-        // 使用默认路径列表，优先本仓库实际构建输出
+        // 使用默认路径列表，优先使用打包的server目录中的可执行文件
         const foundPath = defaultPaths.find((p: string) => fs.existsSync(p));
         serverModule = foundPath || defaultPaths[0];
     }
