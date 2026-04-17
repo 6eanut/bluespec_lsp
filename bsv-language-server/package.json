@@ -2,8 +2,8 @@
   "name": "bsv-language-server",
   "displayName": "BSV Language Server",
   "description": "Bluespec SystemVerilog Language Server for VSCode",
-  "version": "0.1.0",
-  "publisher": "Jiakai Xu",
+  "version": "0.1.1",
+  "publisher": "jiakai-xu",
   "engines": {
     "vscode": "^1.85.0"
   },
