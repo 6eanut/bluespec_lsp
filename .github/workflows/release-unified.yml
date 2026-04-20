@@ -62,14 +62,16 @@ jobs:
         rustup target add ${{ matrix.target }}
         cargo build --release --target ${{ matrix.target }}
 
-        # Verify build result
+        # Verify build result - platform-specific checks
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # Windows PowerShell check
           if (!(Test-Path "target/${{ matrix.target }}/release/${{ matrix.executable_name }}")) {
             Write-Host "Error: Server executable not found"
             exit 1
           }
           Get-ChildItem "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
         else
+          # Linux/macOS bash check
           if [ ! -f "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" ]; then
             echo "Error: Server executable not found"
             exit 1
@@ -87,16 +89,13 @@ jobs:
 
         # Copy executable to platform directory
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # Windows PowerShell
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" -Destination "server/${{ matrix.server_dir }}/"
-        else
-          cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/${{ matrix.server_dir }}/"
-          chmod +x "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
-        fi
-
-        # Verify copied file
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
           Get-ChildItem "server/${{ matrix.server_dir }}/"
         else
+          # Linux/macOS bash
+          cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/${{ matrix.server_dir }}/"
+          chmod +x "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
           ls -la "server/${{ matrix.server_dir }}/"
           file "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
         fi
@@ -168,10 +167,22 @@ jobs:
       run: |
         cd bsv-language-server
         # Package extension with bundled server binaries for all platforms
-        vsce package
+        echo "Packaging VSIX extension..."
+        vsce package --no-dependencies
 
         # List generated VSIX file
+        echo "Generated VSIX file:"
         ls -la *.vsix
+
+        # Check what's inside the VSIX
+        echo "Checking VSIX contents..."
+        if ls *.vsix 1> /dev/null 2>&1; then
+          unzip -l *.vsix | grep -E "(server/|extension|package.json)" || echo "No matching files found in VSIX"
+        else
+          echo "ERROR: No VSIX file generated!"
+          ls -la
+          exit 1
+        fi
 
     - name: Get version from tag
       id: get_version
