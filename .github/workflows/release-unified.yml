@@ -130,7 +130,9 @@ jobs:
     - name: Download server binaries
       uses: actions/download-artifact@v4
       with:
-        path: bsv-language-server/server/
+        path: bsv-language-server/
+        pattern: server-*
+        merge-multiple: true
 
     - name: Install dependencies
       run: |
@@ -142,13 +144,29 @@ jobs:
         cd bsv-language-server
         npm install -g @vscode/vsce
 
+    - name: Verify all platform binaries
+      run: |
+        cd bsv-language-server
+        echo "Verifying all platform server binaries exist..."
+
+        # Check each platform directory
+        platforms=("win32-x64" "darwin-arm64" "linux-x64")
+
+        for platform in "${platforms[@]}"; do
+          if [ -d "server/$platform" ]; then
+            echo "✓ Platform $platform directory exists"
+            ls -la "server/$platform/"
+          else
+            echo "✗ ERROR: Platform $platform directory missing!"
+            exit 1
+          fi
+        done
+
+        echo "All platform binaries verified successfully."
+
     - name: Package VSIX with all platforms
       run: |
         cd bsv-language-server
-        # Verify all platform binaries are present
-        echo "Checking server binaries..."
-        ls -la server/ || true
-
         # Package extension with bundled server binaries for all platforms
         vsce package
 
