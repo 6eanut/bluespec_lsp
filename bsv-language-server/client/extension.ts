@@ -22,12 +22,37 @@ export function activate(context: vscode.ExtensionContext) {
     let serverModule: string;
     const fs = require('fs');
 
-    // Determine executable name based on platform
-    const isWindows = process.platform === 'win32';
-    const serverExecutableName = isWindows ? 'bsv-language-server.exe' : 'bsv-language-server';
+    // Determine platform-specific server binary path
+    let platform: string;
+    let arch: string;
+
+    switch (process.platform) {
+        case 'win32':
+            platform = 'win32';
+            arch = process.arch === 'x64' ? 'x64' : 'ia32';
+            break;
+        case 'darwin':
+            platform = 'darwin';
+            arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+            break;
+        case 'linux':
+            platform = 'linux';
+            arch = process.arch === 'x64' ? 'x64' : 'ia32';
+            break;
+        default:
+            platform = process.platform;
+            arch = process.arch;
+    }
+
+    const platformDir = `${platform}-${arch}`;
+    const serverExecutableName = process.platform === 'win32' ? 'bsv-language-server.exe' : 'bsv-language-server';
 
     const defaultPaths = [
+        // Platform-specific binary in server directory
+        context.asAbsolutePath(path.join('server', platformDir, serverExecutableName)),
+        // Legacy path (for backward compatibility)
         context.asAbsolutePath(path.join('server', serverExecutableName)),
+        // Development paths
         context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', serverExecutableName)),
         context.asAbsolutePath(path.join('..', 'target', 'release', serverExecutableName)),
     ];
