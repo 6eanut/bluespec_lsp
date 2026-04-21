@@ -101,6 +101,36 @@ cargo test constant_expansion
 ./scripts/run_tests.sh --verbose
 ```
 
+### Cross-Platform Development
+
+The BSV Language Server supports multiple platforms. When making changes that could affect cross-platform compatibility:
+
+#### Building for Different Platforms
+
+```bash
+# Windows x86_64
+cargo build --release --target x86_64-pc-windows-msvc
+
+# macOS ARM64 (Apple Silicon)
+cargo build --release --target aarch64-apple-darwin
+
+# Linux x86_64
+cargo build --release --target x86_64-unknown-linux-gnu
+```
+
+#### Platform-Specific Considerations
+
+1. **File Paths**: Always use `std::path::Path` and `std::path::PathBuf` for file operations. Avoid hardcoding path separators.
+2. **Executable Names**: Use `.exe` extension on Windows, no extension on Unix-like systems.
+3. **Tree-sitter C Code**: The `build.rs` files use the `cc` crate which handles cross-compilation automatically.
+4. **GitHub Actions**: The CI/CD pipeline builds for Windows x86_64 and macOS ARM64. All changes should be tested on both platforms.
+
+#### Testing Cross-Platform Compatibility
+
+1. **Local Testing**: If you have access to multiple platforms, test builds on each.
+2. **CI Testing**: All pull requests automatically run GitHub Actions workflows for both platforms.
+3. **VSIX Packaging**: The extension packages platform-specific binaries in separate VSIX files.
+
 ### Test Fixtures
 
 Test fixture files are located in `test_fixtures/`:

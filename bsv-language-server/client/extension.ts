@@ -46,7 +46,7 @@ export function activate(context: vscode.ExtensionContext) {
     // 如果服务器模块不存在，尝试从系统PATH查找
     if (!fs.existsSync(serverModule)) {
         console.warn(`BSV language server executable not found at ${serverModule}, falling back to PATH lookup.`);
-        serverModule = 'bsv-language-server';
+        serverModule = serverExecutableName;
     }
     
     // 服务器选项

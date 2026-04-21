@@ -7,7 +7,23 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: windows-latest  # Windows x86_64 environment
+    strategy:
+      matrix:
+        include:
+          - platform: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: bsv-language-server-windows-x64.vsix
+            executable_name: bsv-language-server.exe
+            server_dir: win32-x64
+          - platform: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: bsv-language-server-macos-arm64.vsix
+            executable_name: bsv-language-server
+            server_dir: darwin-arm64
+
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write  # Required to create GitHub Releases
 
@@ -28,7 +44,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
-        targets: x86_64-pc-windows-msvc  # Windows x86_64 target
+        targets: ${{ matrix.target }}
 
     - name: Install dependencies
       run: |
@@ -43,26 +59,41 @@ jobs:
     - name: Build Rust server
       run: |
         cd bsv-language-server
-        # Add Windows target
-        rustup target add x86_64-pc-windows-msvc
-        # Build release version for Windows
-        cargo build --release --target x86_64-pc-windows-msvc
-        # Verify build result (PowerShell syntax)
-        if (!(Test-Path "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe")) {
-          Write-Host "Error: Server executable not found"
-          exit 1
-        }
-        Get-ChildItem "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe"
+        # Add target if not already installed
+        rustup target add ${{ matrix.target }}
+        # Build release version
+        cargo build --release --target ${{ matrix.target }}
+        # Verify build result
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if (!(Test-Path "target/${{ matrix.target }}/release/${{ matrix.executable_name }}")) {
+            Write-Host "Error: Server executable not found"
+            exit 1
+          }
+          Get-ChildItem "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+        else
+          if [ ! -f "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" ]; then
+            echo "Error: Server executable not found"
+            exit 1
+          fi
+          ls -la "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+          # Ensure executable permission on macOS/Linux
+          chmod +x "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+        fi
 
     - name: Prepare server directory for VSIX
       run: |
         cd bsv-language-server
-        # Create server directory
-        New-Item -ItemType Directory -Path server -Force
-        # Copy Windows executable to server directory (PowerShell syntax)
-        Copy-Item "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe" -Destination "server/"
-        # Verify copied file
-        Get-ChildItem server/
+        # Create platform-specific server directory
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          New-Item -ItemType Directory -Force -Path "server/${{ matrix.server_dir }}"
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" -Destination "server/${{ matrix.server_dir }}/"
+          Get-ChildItem "server/${{ matrix.server_dir }}/"
+        else
+          mkdir -p "server/${{ matrix.server_dir }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/${{ matrix.server_dir }}/"
+          ls -la "server/${{ matrix.server_dir }}/"
+          chmod +x "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
+        fi
 
     - name: Install vsce
       run: |
@@ -76,15 +107,40 @@ jobs:
         npm install
         # Package extension with bundled server
         vsce package
-        # List generated VSIX file (PowerShell syntax)
-        Get-ChildItem *.vsix
+        # Rename VSIX file to include platform
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          Get-ChildItem *.vsix | Rename-Item -NewName "${{ matrix.artifact_name }}"
+          Get-ChildItem *.vsix
+        else
+          mv *.vsix "${{ matrix.artifact_name }}"
+          ls -la *.vsix
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: bsv-language-server/${{ matrix.artifact_name }}
+        retention-days: 1
+
+  create-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
 
     - name: Get version from tag
       id: get_version
       run: |
         # Extract version from tag (remove v prefix)
-        $version = "${{ github.ref_name }}".Substring(1)
-        echo "version=$version" >> $env:GITHUB_OUTPUT
+        version="${GITHUB_REF#refs/tags/v}"
+        echo "version=$version" >> $GITHUB_OUTPUT
         echo "Tag version: $version"
 
     - name: Create GitHub Release
@@ -95,23 +151,28 @@ jobs:
         body: |
           ## BSV Language Server v${{ steps.get_version.outputs.version }}
 
+          ### Supported Platforms
+          - **Windows x86_64**: Download `bsv-language-server-windows-x64.vsix`
+          - **macOS ARM64 (Apple Silicon)**: Download `bsv-language-server-macos-arm64.vsix`
+
           ### Features
           - Symbol navigation (go-to-definition, document symbols)
           - Constant expansion with hover documentation
           - Syntax highlighting and error recovery
-          - Windows x86_64 native support
+          - Multi-platform native support
 
           ### Installation
-          1. Download the `.vsix` file below
+          1. Download the appropriate `.vsix` file for your platform
           2. Open VS Code
-          3. Go to Extensions view (Ctrl+Shift+X)
+          3. Go to Extensions view (Ctrl+Shift+X / Cmd+Shift+X)
           4. Click "..." menu and select "Install from VSIX..."
           5. Select the downloaded file
 
           ### Notes
-          - This release includes the BSV language server executable for Windows x86_64
+          - Each VSIX contains the language server executable for the specific platform
           - The extension will automatically use the bundled server - no additional configuration needed
         draft: false
         prerelease: false
         files: |
-          bsv-language-server/*.vsix
+          artifacts/bsv-language-server-windows-x64.vsix
+          artifacts/bsv-language-server-macos-arm64.vsix
