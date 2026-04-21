@@ -46,6 +46,24 @@ jobs:
         toolchain: stable
         targets: ${{ matrix.target }}
 
+    - name: Check Rust version
+      run: rustc --version && cargo --version
+
+    - name: Install build dependencies
+      run: |
+        # Install system build tools if needed
+        if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          echo "Installing build tools for macOS..."
+          # Ensure Xcode command line tools are available
+          xcode-select --install 2>/dev/null || true
+        fi
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          echo "Windows build environment should have required tools"
+        fi
+        # Verify C compiler is available
+        echo "Checking C compiler..."
+        cc --version || gcc --version || clang --version || echo "C compiler not found"
+
     - name: Install dependencies
       run: |
         cd bsv-language-server
