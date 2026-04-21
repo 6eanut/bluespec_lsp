@@ -4,122 +4,94 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This workspace contains a Bluespec SystemVerilog (BSV) Language Server implementation with two main components:
+This repository contains two related projects for Bluespec SystemVerilog (BSV) language support:
 
-1. **tree-sitter-bsv** - Tree-sitter grammar and parser for BSV
-2. **bsv-language-server** - Rust-based LSP server with VS Code client extension
+1. **tree-sitter-bsv**: Tree-sitter grammar and parser for BSV
+2. **bsv-language-server**: Rust-based Language Server Protocol (LSP) implementation with VS Code client extension
 
 ## Development Commands
 
-### Building the Parser (tree-sitter-bsv)
+### Building tree-sitter-bsv
 ```bash
 cd tree-sitter-bsv
-tree-sitter generate    # Generate C parser from grammar.json
-tree-sitter test        # Run grammar tests
+tree-sitter generate    # Generate C parser files from grammar.json
+tree-sitter test        # Run grammar tests using files in test/
 ```
 
-### Building the Language Server
+### Building bsv-language-server
 ```bash
 cd bsv-language-server
-
-# Build Rust server (development)
-cargo build
-
-# Build Rust server (release)
-cargo build --release
-# Output: target/release/bsv-language-server (or .exe on Windows)
-
-# Build TypeScript client
-npm install
-npm run compile         # Compiles to client/out/
+cargo build --release   # Build Rust language server
+npm install             # Install Node.js dependencies
+npm run compile         # Compile TypeScript client to client/out/
 ```
 
-### Testing
+### Running Tests
 ```bash
 cd bsv-language-server
-
-# Run all tests
-cargo test
-
-# Run with verbose output
-cargo test -- --nocapture
-
-# Run specific test
-cargo test test_extract_module_with_broken_endmodule
-
-# Use test script
-./scripts/run_tests.sh
+cargo test              # Run all Rust tests
+cargo test -- --nocapture # Run with verbose output
+./scripts/run_tests.sh  # Use test runner script
 ./scripts/run_tests.sh --verbose
 ./scripts/run_tests.sh --release
 ```
 
 ### Development Workflow
-1. Open `bsv-language-server` in VS Code
-2. Use **Run and Debug** → **Launch Extension** to start Extension Development Host
+1. Open `bsv-language-server` folder in VS Code
+2. Use Run and Debug → `Launch Extension` to start an Extension Development Host
 3. Open `.bsv` files in the development host to test LSP features
-4. Use `bsv.restartServer` command to restart language server without restarting VS Code
+4. Use `bsv.restartServer` command from Command Palette to restart language server without restarting VS Code
 
-### Release Builds (GitHub Actions)
-- Triggered by `v*` tags (e.g., `v1.0.0`)
-- Builds multi-platform VSIX extension with:
-  - Windows x86_64 (`win32-x64/bsv-language-server.exe`)
-  - macOS arm64 (`darwin-arm64/bsv-language-server`)
-  - Linux x86_64 (`linux-x64/bsv-language-server`)
-- Creates GitHub Release with VSIX file
+### Release Process
+The GitHub Actions workflow (`/.github/workflows/release.yml`) builds VSIX packages for multiple platforms:
+- Windows x86_64 (`win32-x64`)
+- macOS arm64 (`darwin-arm64`)
+- Linux x86_64 (`linux-x64`)
+
+To trigger a release:
+```bash
+git tag v0.0.2
+git push origin v0.0.2
+```
 
 ## Architecture
 
-### Key Components
-- **src/parser.rs** - Tree-sitter parser with error recovery (extracts symbols from malformed BSV)
-- **src/symbols.rs** - Symbol table management
-- **src/constant_expansion/** - Constant evaluation system for `#define` macros
-- **src/server.rs** - Main LSP server implementation (tower-lsp)
-- **client/extension.ts** - VS Code client extension
-
-### Key Features
-1. **Error Recovery**: Extracts symbols from syntax errors by traversing ERROR nodes
-2. **Constant Expansion**: Evaluates `#define` constants with nested type functions (TAdd, TSub, TMul, etc.)
-3. **LSP Features**: Document symbols, go-to-definition, hover, completion, workspace symbols
-4. **Multi-platform**: Single VSIX with platform-specific server binaries
-
-### Build System
-- Rust server includes C parser via `build.rs` (`src/tree_sitter_bsv.c`)
-- VS Code extension uses `vscode-languageclient` for LSP communication
-- Multi-platform builds via GitHub Actions matrix strategy
-
-## File Structure
-
+### Language Server Structure
 ```
 bsv-language-server/
 ├── src/
-│   ├── server.rs          # LSP server implementation
+│   ├── server.rs          # Main LSP server implementation
 │   ├── parser.rs          # Tree-sitter parser with error recovery
 │   ├── symbols.rs         # Symbol table management
-│   ├── constant_expansion/# Constant evaluation
-│   ├── lib.rs             # Library exports
-│   ├── main.rs            # Server entry point
-│   └── tree_sitter_bsv.c  # Generated C parser
+│   ├── constant_expansion/ # Constant evaluation system
+│   └── lib.rs             # Main library exports
 ├── client/
-│   ├── extension.ts       # VS Code client
-│   └── out/               # Compiled JavaScript
-├── test_fixtures/         # Test BSV samples
-├── server/                # Platform-specific server binaries (release)
+│   └── extension.ts       # VS Code extension entry point (TypeScript)
+├── test_fixtures/         # Test BSV code samples
 └── scripts/               # Build and test scripts
-
-tree-sitter-bsv/
-├── src/grammar.json       # Tree-sitter grammar definition
-├── src/node-types.json    # Node type definitions
-├── src/parser.c           # Generated parser
-└── test/                  # Grammar test files
 ```
 
-## Testing
-- Test fixtures: `test_fixtures/correct.bsv`, `test_fixtures/broken.bsv`, `test_fixtures/constants.bsv`
-- Tests cover: correct code parsing, error recovery, constant expansion, performance
-- Run tests before submitting changes
+### Key Components
 
-## Important Notes
-- The extension looks for server binaries in platform-specific directories (`server/win32-x64/`, `server/darwin-arm64/`, `server/linux-x64/`)
-- Backward compatibility: also checks legacy `server/` directory
-- Client automatically selects correct binary based on platform and architecture
-- Release builds include all platform binaries in a single VSIX file
+1. **Parser**: Uses `tree-sitter-bsv` grammar with error recovery to extract symbols from malformed BSV code
+2. **Symbol Table**: Concurrent symbol storage using `dashmap` for workspace-wide symbol lookup
+3. **Constant Expansion**: Evaluates `#define` constants with nested type functions (TAdd, TSub, TMul, etc.)
+4. **Client**: VS Code extension that launches the Rust server binary and provides LSP features
+
+### Platform Support
+The extension supports multiple platforms by:
+1. Building Rust server binaries for each target (`x86_64-pc-windows-msvc`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`)
+2. Packaging binaries in platform-specific directories (`win32-x64`, `darwin-arm64`, `linux-x64`) within the `server/` folder
+3. VS Code extension automatically selects the correct binary based on the platform
+
+### Error Recovery System
+The parser implements error-tolerant symbol extraction by:
+- Traversing ERROR nodes in parse trees
+- Identifying recognizable patterns despite syntax errors
+- Extracting module definitions, functions, and variables even with broken syntax
+
+## Testing
+Test fixtures are in `bsv-language-server/test_fixtures/`:
+- `correct.bsv` - Syntactically correct BSV code
+- `broken.bsv` - BSV code with intentional syntax errors
+- `constants.bsv` - `#define` constant definitions for testing

@@ -62,29 +62,43 @@ jobs:
         rustup target add ${{ matrix.target }}
         cargo build --release --target ${{ matrix.target }}
 
-    - name: Verify build result
-      run: |
-        cd bsv-language-server
-        ${{ matrix.os == 'windows-latest' && 'if (!(Test-Path "target/${{ matrix.target }}/release/${{ matrix.executable_name }}")) {
-          Write-Host "Error: Server executable not found"
-          exit 1
-        }
-        Get-ChildItem "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"' || 'if [ ! -f "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" ]; then
-          echo "Error: Server executable not found"
-          exit 1
+        # Verify build result - platform-specific checks
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # Windows PowerShell check
+          if (!(Test-Path "target/${{ matrix.target }}/release/${{ matrix.executable_name }}")) {
+            Write-Host "Error: Server executable not found"
+            exit 1
+          }
+          Get-ChildItem "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+        else
+          # Linux/macOS bash check
+          if [ ! -f "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" ]; then
+            echo "Error: Server executable not found"
+            exit 1
+          fi
+          ls -la "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+          file "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
         fi
-        ls -la "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
-        file "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"' }}
 
     - name: Prepare platform-specific server binary
       run: |
         cd bsv-language-server
+
+        # Create platform-specific directory
         mkdir -p "server/${{ matrix.server_dir }}"
-        ${{ matrix.os == 'windows-latest' && 'Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" -Destination "server/${{ matrix.server_dir }}/"
-        Get-ChildItem "server/${{ matrix.server_dir }}/"' || 'cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/${{ matrix.server_dir }}/"
-        chmod +x "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
-        ls -la "server/${{ matrix.server_dir }}/"
-        file "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"' }}
+
+        # Copy executable to platform directory
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # Windows PowerShell
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" -Destination "server/${{ matrix.server_dir }}/"
+          Get-ChildItem "server/${{ matrix.server_dir }}/"
+        else
+          # Linux/macOS bash
+          cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/${{ matrix.server_dir }}/"
+          chmod +x "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
+          ls -la "server/${{ matrix.server_dir }}/"
+          file "server/${{ matrix.server_dir }}/${{ matrix.executable_name }}"
+        fi
 
     - name: Upload server binary artifact
       uses: actions/upload-artifact@v4

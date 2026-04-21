@@ -4,8 +4,78 @@ import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } f
 
 let client: LanguageClient;
 
+// Platform detection utilities
+interface PlatformInfo {
+    os: 'win32' | 'darwin' | 'linux' | 'other';
+    arch: 'arm64' | 'x64' | 'x86' | 'other';
+}
+
+function getPlatform(): PlatformInfo {
+    const nodePlatform = process.platform;
+    const nodeArch = process.arch;
+
+    let os: PlatformInfo['os'];
+    switch (nodePlatform) {
+        case 'win32':
+            os = 'win32';
+            break;
+        case 'darwin':
+            os = 'darwin';
+            break;
+        case 'linux':
+            os = 'linux';
+            break;
+        default:
+            os = 'other';
+    }
+
+    let arch: PlatformInfo['arch'];
+    switch (nodeArch) {
+        case 'arm64':
+            arch = 'arm64';
+            break;
+        case 'x64':
+            arch = 'x64';
+            break;
+        case 'ia32':
+            arch = 'x86';
+            break;
+        default:
+            arch = 'other';
+    }
+
+    return { os, arch };
+}
+
+function getPlatformServerDirectory(platform: PlatformInfo): string {
+    // Map platform to VS Code extension platform directory names
+    // https://code.visualstudio.com/api/working-with-extensions/publishing-extension#platformspecific-extensions
+    if (platform.os === 'win32' && platform.arch === 'x64') {
+        return 'win32-x64';
+    } else if (platform.os === 'darwin' && platform.arch === 'arm64') {
+        return 'darwin-arm64';
+    } else if (platform.os === 'linux' && platform.arch === 'x64') {
+        return 'linux-x64';
+    } else if (platform.os === 'darwin' && platform.arch === 'x64') {
+        // macOS x64 is also 'darwin-x64' in VS Code
+        return 'darwin-x64';
+    } else if (platform.os === 'win32' && platform.arch === 'x86') {
+        return 'win32-ia32';
+    } else if (platform.os === 'linux' && platform.arch === 'arm64') {
+        return 'linux-arm64';
+    } else {
+        // Fallback to generic directory
+        return ''; // Will fall back to legacy path
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('BSV Language Server extension is now active!');
+
+    // Log platform information for debugging
+    const platform = getPlatform();
+    console.log(`Detected platform: OS=${platform.os}, Arch=${platform.arch}`);
+    console.log(`Platform server directory: ${getPlatformServerDirectory(platform)}`);
     
     // 获取配置
     const config = vscode.workspace.getConfiguration('bsv');
@@ -22,35 +92,15 @@ export function activate(context: vscode.ExtensionContext) {
     let serverModule: string;
     const fs = require('fs');
 
-    // Determine platform-specific server binary path
-    let platform: string;
-    let arch: string;
-
-    switch (process.platform) {
-        case 'win32':
-            platform = 'win32';
-            arch = process.arch === 'x64' ? 'x64' : 'ia32';
-            break;
-        case 'darwin':
-            platform = 'darwin';
-            arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-            break;
-        case 'linux':
-            platform = 'linux';
-            arch = process.arch === 'x64' ? 'x64' : 'ia32';
-            break;
-        default:
-            platform = process.platform;
-            arch = process.arch;
-    }
-
-    const platformDir = `${platform}-${arch}`;
-    const serverExecutableName = process.platform === 'win32' ? 'bsv-language-server.exe' : 'bsv-language-server';
+    // Determine platform-specific paths
+    const platform = getPlatform();
+    const serverExecutableName = platform.os === 'win32' ? 'bsv-language-server.exe' : 'bsv-language-server';
+    const platformServerDir = getPlatformServerDirectory(platform);
 
     const defaultPaths = [
-        // Platform-specific binary in server directory
-        context.asAbsolutePath(path.join('server', platformDir, serverExecutableName)),
-        // Legacy path (for backward compatibility)
+        // Platform-specific binary in server/{platform} directory (if platform is supported)
+        ...(platformServerDir ? [context.asAbsolutePath(path.join('server', platformServerDir, serverExecutableName))] : []),
+        // Legacy path for backward compatibility (direct in server directory)
         context.asAbsolutePath(path.join('server', serverExecutableName)),
         // Development paths
         context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', serverExecutableName)),

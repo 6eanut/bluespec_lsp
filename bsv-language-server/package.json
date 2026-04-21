@@ -16,6 +16,10 @@
     "onLanguage:bsv"
   ],
   "main": "./client/out/extension.js",
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
   "contributes": {
     "languages": [
       {
