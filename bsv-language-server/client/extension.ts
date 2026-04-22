@@ -23,8 +23,17 @@ export function activate(context: vscode.ExtensionContext) {
     const fs = require('fs');
 
     // Determine executable name based on platform
-    const isWindows = process.platform === 'win32';
+    const platform = process.platform;
+    const arch = process.arch;
+    const isWindows = platform === 'win32';
+    const isMacOS = platform === 'darwin';
+    const isMacOSArm64 = isMacOS && arch === 'arm64';
+    const isMacOSIntel = isMacOS && arch === 'x64';
     const serverExecutableName = isWindows ? 'bsv-language-server.exe' : 'bsv-language-server';
+
+    console.log(`Platform: ${platform}, Architecture: ${arch}`);
+    console.log(`Detected: Windows=${isWindows}, macOS=${isMacOS}, macOS ARM64=${isMacOSArm64}, macOS Intel=${isMacOSIntel}`);
+    console.log(`Using executable name: ${serverExecutableName}`);
 
     const defaultPaths = [
         context.asAbsolutePath(path.join('server', serverExecutableName)),

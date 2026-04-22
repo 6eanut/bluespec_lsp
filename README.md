@@ -20,5 +20,42 @@ Where to look next
 - `bsv-language-server/src/` — server implementation (Rust).
 - `bsv-language-server/client/` — VS Code extension client (TypeScript).
 
+## Release Process
+
+The project uses GitHub Actions to automatically build and release VSIX packages for multiple platforms when a version tag is pushed:
+
+### Supported Platforms
+- **Windows x86_64** (`bsv-language-server-<version>-windows-x64.vsix`)
+- **macOS ARM64 (Apple Silicon)** (`bsv-language-server-<version>-darwin-arm64.vsix`)
+
+### Creating a Release
+1. Create and push a version tag (e.g., `v1.0.0`):
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+2. GitHub Actions will automatically:
+   - Build the Rust server for both Windows and macOS ARM64
+   - Compile the TypeScript client
+   - Package platform-specific VSIX files
+   - Create a GitHub Release with both VSIX files
+
+3. Download the appropriate VSIX for your platform from the [Releases](https://github.com/open-rdma/bluespec-lsp/releases) page.
+
+### Development Builds
+For development, build locally:
+```bash
+cd bsv-language-server
+# Build Rust server
+cargo build --release
+# Compile TypeScript client
+npm install
+npm run compile
+# Package VSIX (requires vsce)
+npm install -g @vscode/vsce
+vsce package
+```
+
 Contributing
 - Please open issues or PRs for grammar fixes, LSP features, or client improvements.

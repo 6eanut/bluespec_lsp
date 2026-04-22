@@ -42,6 +42,9 @@ npm run compile   # compiles client/ TypeScript to client/out
 
 Notes about where the extension finds the server
 - The client tries to use a configured path `bsv.languageServer.path` (see `package.json` configuration). If empty, it falls back to `../target/release/bsv-language-server` relative to the client bundle path, or the `PATH`-installed binary named `bsv-language-server`.
+- For released VSIX packages, the extension includes platform-specific server binaries:
+  - Windows: `server/bsv-language-server.exe`
+  - macOS: `server/bsv-language-server`
 
 Useful npm scripts (from `package.json`):
 - `npm run compile` — compile the TypeScript client (`client/out/extension.js`).
