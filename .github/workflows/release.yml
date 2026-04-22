@@ -65,32 +65,45 @@ jobs:
         # Verify build result
         echo "Verifying build for ${{ matrix.target }}..."
 
-        # Cross-platform verification using find command
-        if find "target/${{ matrix.target }}/release/" -name "${{ matrix.executable_name }}" -type f | grep -q .; then
-          echo "Build successful: Found ${{ matrix.executable_name }}"
-          ls -la "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+        # Platform-specific verification
+        if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          # Windows verification (PowerShell)
+          if (Test-Path "target/${{ matrix.target }}/release/${{ matrix.executable_name }}") {
+            echo "Build successful: Found ${{ matrix.executable_name }}"
+            Get-ChildItem "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+          } else {
+            echo "Error: Server executable not found at target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+            exit 1
+          }
         else
-          echo "Error: Server executable not found at target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
-          exit 1
+          # Unix-like verification (bash)
+          if [ -f "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" ]; then
+            echo "Build successful: Found ${{ matrix.executable_name }}"
+            ls -la "target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+          else
+            echo "Error: Server executable not found at target/${{ matrix.target }}/release/${{ matrix.executable_name }}"
+            exit 1
+          fi
         fi
 
     - name: Prepare server directory for VSIX
       run: |
         cd bsv-language-server
-        # Create server directory (cross-platform)
-        mkdir -p server
-
-        # Copy executable to server directory
-        cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/"
-
-        # Set executable permissions for non-Windows platforms
-        if [ "${{ matrix.os }}" != "windows-latest" ]; then
+        # Create server directory
+        if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          # Windows (PowerShell)
+          New-Item -ItemType Directory -Force -Path server | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" -Destination "server/"
+          echo "Server directory contents:"
+          Get-ChildItem server/
+        else
+          # Unix-like (bash)
+          mkdir -p server
+          cp "target/${{ matrix.target }}/release/${{ matrix.executable_name }}" "server/"
           chmod +x "server/${{ matrix.executable_name }}"
+          echo "Server directory contents:"
+          ls -la server/
         fi
-
-        # Verify copied file
-        echo "Server directory contents:"
-        ls -la server/
 
     - name: Install vsce
       run: |
@@ -106,7 +119,13 @@ jobs:
         vsce package --out bsv-language-server-${{ matrix.vsix_suffix }}.vsix
         # List generated VSIX file
         echo "Generated VSIX files:"
-        ls -la *.vsix
+        if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          # Windows (PowerShell)
+          Get-ChildItem *.vsix
+        else
+          # Unix-like (bash)
+          ls -la *.vsix
+        fi
 
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v4
