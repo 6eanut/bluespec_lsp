@@ -35,6 +35,18 @@ jobs:
         cd bsv-language-server
         npm install
 
+    - name: Install tree-sitter-cli
+      run: npm install -g tree-sitter-cli
+
+    - name: Generate parser.c
+      run: |
+        cd tree-sitter-bsv
+        tree-sitter generate || (echo "tree-sitter generate failed, trying npm run generate" && npm run generate)
+
+    - name: Copy parser.c for language server
+      run: |
+        cp tree-sitter-bsv/src/parser.c bsv-language-server/src/tree_sitter_bsv.c
+
     - name: Compile TypeScript client
       run: |
         cd bsv-language-server
