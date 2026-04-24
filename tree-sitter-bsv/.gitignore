@@ -35,3 +35,5 @@ dist/
 *.wasm
 *.obj
 *.o
+
+src/
