@@ -2,12 +2,9 @@
 // 这个文件展示了如何实施容错符号提取
 
 use tree_sitter::{Parser, Tree, Node};
+use tree_sitter_bsv;
 use crate::Result;
 use std::sync::Mutex;
-
-extern "C" {
-    fn tree_sitter_bsv() -> *const std::ffi::c_void;
-}
 
 pub struct BsvParser {
     parser: Mutex<Parser>,
@@ -16,15 +13,10 @@ pub struct BsvParser {
 impl BsvParser {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
-        
-        let language = unsafe {
-            let ptr = tree_sitter_bsv();
-            std::mem::transmute(ptr)
-        };
-        
-        parser.set_language(language)
+
+        parser.set_language(&tree_sitter_bsv::LANGUAGE.into())
             .map_err(|_| crate::Error::TreeSitter)?;
-        
+
         Ok(Self {
             parser: Mutex::new(parser),
         })
