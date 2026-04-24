@@ -14,6 +14,7 @@ impl BsvParser {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
 
+        // 根据 tree-sitter-bsv 的测试代码，使用 &LANGUAGE.into()
         parser.set_language(&tree_sitter_bsv::LANGUAGE.into())
             .map_err(|_| crate::Error::TreeSitter)?;
 
