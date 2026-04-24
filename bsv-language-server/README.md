@@ -15,6 +15,13 @@ Prerequisites
 - Rust + Cargo (for server)
 - Node.js + npm (for building the VS Code client)
 - VS Code (for extension development/debug)
+- tree-sitter-cli (for generating parser)
+  ```bash
+  # Install tree-sitter-cli
+  cargo install tree-sitter-cli
+  # or
+  npm install -g tree-sitter-cli
+  ```
 
 Build and run (development)
 
