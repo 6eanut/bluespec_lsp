@@ -15,6 +15,10 @@ Getting started (development)
    - `bsv-language-server`: build the Rust server (`cargo build --release`) and compile the client (`npm install && npm run compile`).
 3. To iterate on the extension: open `bsv-language-server` in VS Code and use Run and Debug → `Launch Extension` to start an Extension Development Host. Open a `.bsv` file there to test features (hover, completion, document symbols, go-to-definition).
 
+## 详细构建说明
+
+详细构建说明请查看 [README-build.md](README-build.md)。
+
 Where to look next
 - `tree-sitter-bsv/src/` — grammar and parser sources.
 - `bsv-language-server/src/` — server implementation (Rust).
