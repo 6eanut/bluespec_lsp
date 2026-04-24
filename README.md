@@ -9,11 +9,22 @@ This workspace contains two related projects that together provide a Bluespec Sy
 
 Getting started (development)
 
-1. Open this workspace folder (`bluespec_lsp`) in VS Code.
-2. See each subproject for build instructions:
+1. Install tree-sitter-cli (required for building):
+   ```bash
+   # Using cargo (recommended)
+   cargo install tree-sitter-cli
+   
+   # Or using npm
+   npm install -g tree-sitter-cli
+   ```
+
+2. Open this workspace folder (`bluespec_lsp`) in VS Code.
+
+3. See each subproject for build instructions:
    - `tree-sitter-bsv`: run `tree-sitter generate` and `tree-sitter test` to validate the grammar.
    - `bsv-language-server`: build the Rust server (`cargo build --release`) and compile the client (`npm install && npm run compile`).
-3. To iterate on the extension: open `bsv-language-server` in VS Code and use Run and Debug → `Launch Extension` to start an Extension Development Host. Open a `.bsv` file there to test features (hover, completion, document symbols, go-to-definition).
+
+4. To iterate on the extension: open `bsv-language-server` in VS Code and use Run and Debug → `Launch Extension` to start an Extension Development Host. Open a `.bsv` file there to test features (hover, completion, document symbols, go-to-definition).
 
 Where to look next
 - `tree-sitter-bsv/src/` — grammar and parser sources.
