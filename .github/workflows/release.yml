@@ -33,6 +33,11 @@ jobs:
     - name: Install tree-sitter-cli
       run: cargo install tree-sitter-cli
 
+    - name: Generate tree-sitter parser
+      run: |
+        cd tree-sitter-bsv
+        tree-sitter generate
+
     - name: Install dependencies
       run: |
         cd bsv-language-server
@@ -42,11 +47,6 @@ jobs:
       run: |
         cd bsv-language-server
         npm run compile
-
-    - name: Generate tree-sitter parser
-      run: |
-        cd tree-sitter-bsv
-        tree-sitter generate
 
     - name: Build Rust server
       run: |
