@@ -16,11 +16,13 @@ jobs:
             os: windows-latest
             binary_name: bsv-language-server-x86_64-pc-windows-msvc.exe
             rust_target: x86_64-pc-windows-msvc
+            exe_suffix: .exe
 
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             binary_name: bsv-language-server-x86_64-unknown-linux-gnu
             rust_target: x86_64-unknown-linux-gnu
+            exe_suffix:
 
     runs-on: ${{ matrix.os }}
 
@@ -79,7 +81,7 @@ jobs:
       run: |
         cd bsv-language-server
         mkdir -p server
-        cp "target/${{ matrix.rust_target }}/release/bsv-language-server"* "server/${{ matrix.binary_name }}"
+        cp "target/${{ matrix.rust_target }}/release/bsv-language-server${{ matrix.exe_suffix }}" "server/${{ matrix.binary_name }}"
         ls -lh server/
 
     - name: Upload server binary artifact
