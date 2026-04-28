@@ -53,9 +53,43 @@ function activate(context) {
     // 确定服务器路径
     let serverModule;
     const fs = require('fs');
+
+    // Map platform and architecture to Rust target triple
+    function getTargetTriple() {
+        const platform = process.platform;
+        const arch = process.arch;
+
+        if (platform === 'win32' && arch === 'x64') {
+            return 'x86_64-pc-windows-msvc';
+        } else if (platform === 'linux' && arch === 'x64') {
+            return 'x86_64-unknown-linux-gnu';
+        } else if (platform === 'darwin' && arch === 'x64') {
+            return 'x86_64-apple-darwin';
+        } else if (platform === 'darwin' && arch === 'arm64') {
+            return 'aarch64-apple-darwin';
+        }
+        // Generic fallback
+        return `${platform}-${arch}`;
+    }
+
+    const targetTriple = getTargetTriple();
+    const isWindows = process.platform === 'win32';
+
+    // Platform-specific server binary in the bundled server/ directory
+    const serverBaseName = `bsv-language-server-${targetTriple}`;
+    const serverExecutableName = isWindows ? `${serverBaseName}.exe` : serverBaseName;
+
+    // Legacy name for backward compatibility (single-platform builds)
+    const legacyExecutableName = isWindows ? 'bsv-language-server.exe' : 'bsv-language-server';
+
     const defaultPaths = [
-        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', 'bsv-language-server')),
-        context.asAbsolutePath(path.join('..', 'target', 'release', 'bsv-language-server')),
+        // Multi-platform bundled binary (preferred)
+        context.asAbsolutePath(path.join('server', serverExecutableName)),
+        // Legacy single-platform bundled binary
+        context.asAbsolutePath(path.join('server', legacyExecutableName)),
+        // Development build paths
+        context.asAbsolutePath(path.join('..', 'bsv-language-server', 'target', 'release', legacyExecutableName)),
+        context.asAbsolutePath(path.join('..', 'target', 'release', legacyExecutableName)),
     ];
     if (serverPath && serverPath.trim() !== '') {
         // 使用用户指定的路径

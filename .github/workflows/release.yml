@@ -6,16 +6,28 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0, v0.1.0
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest  # Windows x86_64 environment
-    permissions:
-      contents: write  # Required to create GitHub Releases
+  # Build the Rust language server for multiple platforms in parallel
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary_name: bsv-language-server-x86_64-pc-windows-msvc.exe
+            rust_target: x86_64-pc-windows-msvc
+
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary_name: bsv-language-server-x86_64-unknown-linux-gnu
+            rust_target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Get full history for version info
+        fetch-depth: 0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -28,17 +40,21 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
-        targets: x86_64-pc-windows-msvc  # Windows x86_64 target
 
     - name: Install tree-sitter-cli
       run: cargo install tree-sitter-cli
+
+    - name: Install npm deps in tree-sitter-bsv (for grammar generation)
+      run: |
+        cd tree-sitter-bsv
+        npm install
 
     - name: Generate tree-sitter parser
       run: |
         cd tree-sitter-bsv
         tree-sitter generate
 
-    - name: Install dependencies
+    - name: Install client dependencies
       run: |
         cd bsv-language-server
         npm install
@@ -51,26 +67,59 @@ jobs:
     - name: Build Rust server
       run: |
         cd bsv-language-server
-        # Add Windows target
-        rustup target add x86_64-pc-windows-msvc
-        # Build release version for Windows
-        cargo build --release --target x86_64-pc-windows-msvc
-        # Verify build result (PowerShell syntax)
-        if (!(Test-Path "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe")) {
-          Write-Host "Error: Server executable not found"
-          exit 1
-        }
-        Get-ChildItem "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe"
+        rustup target add ${{ matrix.rust_target }}
+        cargo build --release --target ${{ matrix.rust_target }}
 
-    - name: Prepare server directory for VSIX
+    - name: Rename binary for packaging
+      shell: bash
       run: |
         cd bsv-language-server
-        # Create server directory
-        New-Item -ItemType Directory -Path server -Force
-        # Copy Windows executable to server directory (PowerShell syntax)
-        Copy-Item "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe" -Destination "server/"
-        # Verify copied file
-        Get-ChildItem server/
+        mkdir -p server
+        cp "target/${{ matrix.rust_target }}/release/bsv-language-server"* "server/${{ matrix.binary_name }}"
+        ls -lh server/
+
+    - name: Upload server binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: server-${{ matrix.target }}
+        path: bsv-language-server/server/${{ matrix.binary_name }}
+
+  # Package all platform binaries into a single VSIX and create a release
+  package-and-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Download all server binaries
+      uses: actions/download-artifact@v4
+      with:
+        pattern: server-*
+        path: bsv-language-server/server
+        merge-multiple: true
+
+    - name: List server binaries
+      run: |
+        ls -lh bsv-language-server/server/
+
+    - name: Install client dependencies
+      run: |
+        cd bsv-language-server
+        npm install
+
+    - name: Compile TypeScript client
+      run: |
+        cd bsv-language-server
+        npm run compile
 
     - name: Install vsce
       run: |
@@ -80,19 +129,14 @@ jobs:
     - name: Package VSIX
       run: |
         cd bsv-language-server
-        # Install all dependencies including devDependencies
-        npm install
-        # Package extension with bundled server
         vsce package
-        # List generated VSIX file (PowerShell syntax)
-        Get-ChildItem *.vsix
+        ls -lh *.vsix
 
     - name: Get version from tag
       id: get_version
       run: |
-        # Extract version from tag (remove v prefix)
-        $version = "${{ github.ref_name }}".Substring(1)
-        echo "version=$version" >> $env:GITHUB_OUTPUT
+        version="${GITHUB_REF_NAME#v}"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "Tag version: $version"
 
     - name: Create GitHub Release
@@ -107,7 +151,7 @@ jobs:
           - Symbol navigation (go-to-definition, document symbols)
           - Constant expansion with hover documentation
           - Syntax highlighting and error recovery
-          - Windows x86_64 native support
+          - Multi-platform support: Windows x86_64, Linux x86_64
 
           ### Installation
           1. Download the `.vsix` file below
@@ -116,9 +160,9 @@ jobs:
           4. Click "..." menu and select "Install from VSIX..."
           5. Select the downloaded file
 
-          ### Notes
-          - This release includes the BSV language server executable for Windows x86_64
-          - The extension will automatically use the bundled server - no additional configuration needed
+          ### Supported Platforms
+          - Windows x86_64
+          - Linux x86_64
         draft: false
         prerelease: false
         files: |
