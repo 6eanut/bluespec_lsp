@@ -117,6 +117,10 @@ jobs:
       run: |
         ls -lh bsv-language-server/server/
 
+    - name: Set executable permissions on Linux binary
+      run: |
+        chmod +x bsv-language-server/server/bsv-language-server-x86_64-unknown-linux-gnu
+
     - name: Install client dependencies
       run: |
         cd bsv-language-server

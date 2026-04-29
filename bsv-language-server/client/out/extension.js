@@ -106,6 +106,15 @@ function activate(context) {
         console.warn(`BSV language server executable not found at ${serverModule}, falling back to PATH lookup.`);
         serverModule = 'bsv-language-server';
     }
+    // Repair execute permissions stripped by vsce package on non-Windows
+    if (!isWindows && fs.existsSync(serverModule)) {
+        try {
+            fs.chmodSync(serverModule, 0o755);
+            console.log(`Fixed execute permissions for: ${serverModule}`);
+        } catch (e) {
+            console.warn(`Could not set execute permissions on ${serverModule}: ${e}`);
+        }
+    }
     // 服务器选项
     const serverOptions = {
         run: {
