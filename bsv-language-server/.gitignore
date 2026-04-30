@@ -35,3 +35,9 @@ dist/
 *.wasm
 *.obj
 *.o
+
+# Generated tree-sitter parser files (produced by build.rs)
+src/tree_sitter_bsv.c
+src/tree_sitter/
+src/grammar.json
+src/node-types.json
