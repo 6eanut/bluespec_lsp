@@ -31,12 +31,7 @@ jobs:
         targets: x86_64-pc-windows-msvc  # Windows x86_64 target
 
     - name: Install tree-sitter-cli
-      run: cargo install tree-sitter-cli
-
-    - name: Generate tree-sitter parser
-      run: |
-        cd tree-sitter-bsv
-        tree-sitter generate
+      run: cargo install tree-sitter-cli --version 0.24.7
 
     - name: Install dependencies
       run: |
