@@ -1,5 +1,5 @@
 // Constant Expansion Module for BSV Language Server
-// 
+//
 // This module implements automatic constant expansion for #define macros
 // and type functions (TAdd, TSub, TMul, TDiv, TLog, TExp, etc.)
 //
@@ -16,9 +16,9 @@ mod evaluator;
 mod parser;
 mod types;
 
-pub use types::{ConstantDef, ExpansionResult, ExpansionStep};
 pub use evaluator::ConstantEvaluator;
 pub use parser::ConstantParser;
+pub use types::{ConstantDef, ExpansionResult, ExpansionStep};
 
 #[cfg(test)]
 mod tests {
@@ -29,7 +29,7 @@ mod tests {
         let source = "#define 2 FOO;";
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, "FOO");
         assert_eq!(defs[0].value, "2");
@@ -43,7 +43,7 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         assert_eq!(defs.len(), 2);
         assert_eq!(defs[0].name, "FOO");
         assert_eq!(defs[1].name, "BAR");
@@ -55,10 +55,10 @@ mod tests {
         let source = "#define 2 FOO;";
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("FOO");
-        
+
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(result.final_value, 2);
@@ -74,10 +74,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("BAR");
-        
+
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(result.final_value, 3);
@@ -93,9 +93,9 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
-        
+
         assert_eq!(evaluator.expand("WIDTH").unwrap().final_value, 4);
         assert_eq!(evaluator.expand("EXTENDED").unwrap().final_value, 8);
         assert_eq!(evaluator.expand("TOTAL").unwrap().final_value, 16);
@@ -109,10 +109,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("OFFSET").unwrap();
-        
+
         assert_eq!(result.final_value, 7);
     }
 
@@ -124,10 +124,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("RESULT").unwrap();
-        
+
         assert_eq!(result.final_value, 20);
     }
 
@@ -139,10 +139,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("CHUNK").unwrap();
-        
+
         assert_eq!(result.final_value, 5);
     }
 
@@ -154,10 +154,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("LOG_VAL").unwrap();
-        
+
         assert_eq!(result.final_value, 8);
     }
 
@@ -169,10 +169,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("POWER").unwrap();
-        
+
         assert_eq!(result.final_value, 8);
     }
 
@@ -186,11 +186,14 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
-        
+
         assert_eq!(evaluator.expand("DATA_WIDTH").unwrap().final_value, 8);
-        assert_eq!(evaluator.expand("WIDTH_WITH_PARITY").unwrap().final_value, 9);
+        assert_eq!(
+            evaluator.expand("WIDTH_WITH_PARITY").unwrap().final_value,
+            9
+        );
         assert_eq!(evaluator.expand("BUS_WIDTH").unwrap().final_value, 36);
         assert_eq!(evaluator.expand("BUS_BYTES").unwrap().final_value, 4);
     }
@@ -203,12 +206,12 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("BAR").unwrap();
-        
+
         let trace = result.format_trace();
-        
+
         assert!(trace.contains("BAR"));
         assert!(trace.contains("3"));
     }
@@ -218,10 +221,10 @@ mod tests {
         let source = "#define 2 FOO;";
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("UNDEFINED");
-        
+
         assert!(result.is_none());
     }
 
@@ -235,11 +238,11 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         assert_eq!(defs.len(), 4);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
-        
+
         assert_eq!(evaluator.expand("TOTAL_WIDTH").unwrap().final_value, 40);
         assert_eq!(evaluator.expand("DOUBLE_WIDTH").unwrap().final_value, 80);
     }
@@ -253,10 +256,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("MAX_VAL").unwrap();
-        
+
         assert_eq!(result.final_value, 10);
     }
 
@@ -269,10 +272,10 @@ mod tests {
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         let evaluator = ConstantEvaluator::new(defs);
         let result = evaluator.expand("MIN_VAL").unwrap();
-        
+
         assert_eq!(result.final_value, 5);
     }
 
@@ -293,7 +296,7 @@ endfunction
 "#;
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         assert_eq!(defs.len(), 2);
         assert_eq!(defs[0].name, "WIDTH");
         assert_eq!(defs[1].name, "EXTENDED");
@@ -309,29 +312,35 @@ function Bit#(BUS_WIDTH) getData();
     return 0;
 endfunction
 "#;
-        
+
         let parser = ConstantParser::new();
         let defs = parser.parse(source);
-        
+
         println!("Parsed {} constants:", defs.len());
         for def in &defs {
             println!("  - {} = {} at {:?}", def.name, def.value, def.range);
         }
-        
-        assert!(defs.iter().any(|d| d.name == "DATA_WIDTH"), "Should find DATA_WIDTH");
-        assert!(defs.iter().any(|d| d.name == "BUS_WIDTH"), "Should find BUS_WIDTH");
-        
+
+        assert!(
+            defs.iter().any(|d| d.name == "DATA_WIDTH"),
+            "Should find DATA_WIDTH"
+        );
+        assert!(
+            defs.iter().any(|d| d.name == "BUS_WIDTH"),
+            "Should find BUS_WIDTH"
+        );
+
         let evaluator = ConstantEvaluator::from_source(source);
-        
+
         let result = evaluator.expand("BUS_WIDTH");
         assert!(result.is_some(), "Should expand BUS_WIDTH");
-        
+
         let result = result.unwrap();
         println!("\nBUS_WIDTH expansion:");
         println!("  Final value: {}", result.final_value);
         println!("  Success: {}", result.success);
         println!("  Trace:\n{}", result.format_trace());
-        
+
         assert_eq!(result.final_value, 32, "BUS_WIDTH should be 32");
         assert!(result.success, "Expansion should succeed");
     }
@@ -345,21 +354,24 @@ endfunction
 #define TMul#(WIDTH_WITH_PARITY, 4) TOTAL_BUS_WIDTH;
 #define TDiv#(TOTAL_BUS_WIDTH, 8) TOTAL_BUS_BYTES;
 "#;
-        
+
         let evaluator = ConstantEvaluator::from_source(source);
-        
+
         let result = evaluator.expand("TOTAL_BUS_BYTES");
         assert!(result.is_some(), "Should expand TOTAL_BUS_BYTES");
-        
+
         let result = result.unwrap();
         println!("\nTOTAL_BUS_BYTES expansion (user example):");
         println!("  Final value: {}", result.final_value);
         println!("  Trace:\n{}", result.format_trace());
-        
+
         assert_eq!(result.final_value, 4, "TOTAL_BUS_BYTES should be 4");
-        
+
         let trace = result.format_trace();
-        assert!(trace.contains("TOTAL_BUS_BYTES"), "Should contain constant name");
+        assert!(
+            trace.contains("TOTAL_BUS_BYTES"),
+            "Should contain constant name"
+        );
         assert!(trace.contains("TDiv#"), "Should show TDiv");
         assert!(trace.contains("TMul#"), "Should show TMul");
         assert!(trace.contains("TAdd#"), "Should show TAdd");
