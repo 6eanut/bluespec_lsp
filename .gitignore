@@ -1,0 +1,14 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated tree-sitter files (generated in subprojects)
+grammar.json
+node-types.json
