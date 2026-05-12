@@ -25,8 +25,8 @@ Thank you for your interest in contributing to the Bluespec SystemVerilog (BSV) 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-username/bluespec-lsp.git
-   cd bluespec-lsp
+   git clone https://github.com/6eanut/bluespec_lsp.git
+   cd bluespec_lsp
    ```
 2. Build the Rust language server:
 
@@ -166,7 +166,7 @@ Follow conventional commit format:
 
 ## Good First Issues
 
-[Here](https://github.com/open-rdma/bluespec-lsp/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) are some beginner-friendly issues to help you get started:
+[Here](https://github.com/6eanut/bluespec_lsp/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) are some beginner-friendly issues to help you get started:
 
 ---
 
