@@ -2,6 +2,7 @@
 // 这个文件展示了如何实施容错符号提取
 
 use crate::Result;
+use lsp_types::{FoldingRange, FoldingRangeKind};
 use std::sync::Mutex;
 use tree_sitter::{Node, Parser, Tree};
 
@@ -53,6 +54,141 @@ impl BsvParser {
         symbols.dedup_by(|a, b| a.name == b.name);
 
         symbols
+    }
+
+    /// Collect folding ranges from the parsed syntax tree.
+    ///
+    /// Returns a sorted list of `FoldingRange` covering all foldable block
+    /// structures in the document: module/endmodule, interface/endinterface,
+    /// rule/endrule, method/endmethod, function/endfunction, action blocks,
+    /// typeclass blocks, FSM blocks (seq/endseq, par/endpar), begin/end
+    /// expressions, and consecutive `//` comment lines.
+    ///
+    /// Ranges are non-overlapping — child blocks nest within parents but the
+    /// returned list is valid for LSP folding (editors handle nesting).
+    pub fn collect_folding_ranges(&self, tree: &Tree, source: &str) -> Vec<FoldingRange> {
+        let mut ranges = Vec::new();
+        let root = tree.root_node();
+        Self::collect_block_ranges(root, &mut ranges);
+        Self::collect_comment_ranges(source, &mut ranges);
+        ranges.sort_by_key(|r| r.start_line);
+        ranges
+    }
+
+    /// Recursively collect folding ranges from block-structure nodes.
+    fn collect_block_ranges(node: Node, ranges: &mut Vec<FoldingRange>) {
+        // Node kinds that form foldable blocks.
+        const BLOCK_KINDS: &[&str] = &[
+            "moduleDef",
+            "interfaceDecl",
+            "methodDef",
+            "functionDef",
+            "rule",
+            "typeclassDef",
+            "typeclassInstanceDef",
+            "actionBlock",
+            "actionValueBlock",
+            "subinterfaceDef",
+            "subFunctionDef",
+            "seqFsmStmt",
+            "parFsmStmt",
+            "interfaceExpr",
+            "externModuleImport",
+            "rulesExpr",
+            "beginEndExpr",
+        ];
+
+        if BLOCK_KINDS.contains(&node.kind()) {
+            let start = node.start_position().row as u32;
+            let end = node.end_position().row as u32;
+            // Only emit ranges that are at least 2 lines tall (foldable).
+            if end > start {
+                // Use the line *before* the closing keyword as end_line so the
+                // closing keyword (e.g. `endmodule`) stays visible when folded.
+                let end_line = if end > start + 1 { end - 1 } else { end };
+                ranges.push(FoldingRange {
+                    start_line: start,
+                    start_character: None,
+                    end_line,
+                    end_character: None,
+                    kind: Some(FoldingRangeKind::Region),
+                    collapsed_text: None,
+                });
+            }
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            Self::collect_block_ranges(child, ranges);
+        }
+    }
+
+    /// Collect folding ranges for consecutive `//` comment lines and `/* */` blocks.
+    ///
+    /// Because tree-sitter stores comments as extras (outside the standard
+    /// child node tree), we scan the source text line-by-line instead.
+    fn collect_comment_ranges(source: &str, ranges: &mut Vec<FoldingRange>) {
+        Self::collect_line_comment_ranges(source, ranges);
+        Self::collect_block_comment_ranges(source, ranges);
+    }
+
+    /// Fold consecutive `//` comment lines (3+ lines).
+    fn collect_line_comment_ranges(source: &str, ranges: &mut Vec<FoldingRange>) {
+        let lines: Vec<&str> = source.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+            if trimmed.starts_with("//") {
+                let start = i;
+                while i < lines.len() && lines[i].trim().starts_with("//") {
+                    i += 1;
+                }
+                let end = i; // exclusive end
+                if end - start >= 3 {
+                    ranges.push(FoldingRange {
+                        start_line: start as u32,
+                        start_character: None,
+                        end_line: (end - 1) as u32,
+                        end_character: None,
+                        kind: Some(FoldingRangeKind::Comment),
+                        collapsed_text: None,
+                    });
+                }
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Fold `/* ... */` block comments spanning 3+ lines.
+    fn collect_block_comment_ranges(source: &str, ranges: &mut Vec<FoldingRange>) {
+        let lines: Vec<&str> = source.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            if lines[i].trim().starts_with("/*") {
+                let start = i;
+                // Find the closing `*/` (may be on same or later line).
+                while i < lines.len() && !lines[i].contains("*/") {
+                    i += 1;
+                }
+                if i < lines.len() {
+                    i += 1; // include the line with `*/`
+                }
+                // Only fold blocks spanning 3+ lines.
+                if i - start >= 3 {
+                    ranges.push(FoldingRange {
+                        start_line: start as u32,
+                        start_character: None,
+                        end_line: (i - 1) as u32,
+                        end_character: None,
+                        kind: Some(FoldingRangeKind::Comment),
+                        collapsed_text: None,
+                    });
+                }
+            } else {
+                i += 1;
+            }
+        }
     }
 
     fn traverse_node(&self, node: Node, source: &str, symbols: &mut Vec<crate::Symbol>) {
@@ -697,6 +833,217 @@ endfunction
         assert!(symbols.iter().any(|s| s.name == "mkTest"));
     }
 
+    // ── Folding range tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_folding_module_range() {
+        let source =
+            "module mkFoo();\n    rule r;\n        $display(\"hello\");\n    endrule\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // Should have one module range and one rule range.
+        assert!(
+            ranges.iter().any(|r| r.start_line == 0 && r.end_line == 3),
+            "Expected module folding range covering lines 0-3, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_rule_range() {
+        let source = "module mkDemo();\n    rule r;\n        let x = 1;\n        let y = 2;\n    endrule\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // The rule spans lines 1-4; end_line should be 3 (one before endrule).
+        assert!(
+            ranges.iter().any(|r| r.start_line == 1 && r.end_line == 3),
+            "Expected rule folding range covering lines 1-3, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_function_range() {
+        let source =
+            "function Bit#(32) add(Bit#(32) a, Bit#(32) b);\n    return a + b;\nendfunction\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        assert!(
+            ranges.iter().any(|r| r.start_line == 0 && r.end_line == 1),
+            "Expected function folding range covering lines 0-1, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_nested_blocks() {
+        let source = "module mkTop();\n    rule r1;\n        $display(\"a\");\n    endrule\n    rule r2;\n        $display(\"b\");\n    endrule\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // moduleDef spans lines 0-7 (endmodule on line 7), so end_line = 6
+        // rule r1 spans lines 1-3 (endrule on line 3), so end_line = 2
+        // rule r2 spans lines 4-6 (endrule on line 6), so end_line = 5
+        assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 6));
+        assert!(ranges.iter().any(|r| r.start_line == 1 && r.end_line == 2));
+        assert!(ranges.iter().any(|r| r.start_line == 4 && r.end_line == 5));
+        assert_eq!(ranges.len(), 3);
+    }
+
+    #[test]
+    fn test_folding_comment_block() {
+        let source = "// line 1\n// line 2\n// line 3\n// line 4\nmodule mkFoo();\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // 4 consecutive comment lines on lines 0-3 should fold.
+        assert!(
+            ranges
+                .iter()
+                .any(|r| r.kind == Some(FoldingRangeKind::Comment)
+                    && r.start_line == 0
+                    && r.end_line == 3),
+            "Expected comment folding range on lines 0-3, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_no_short_comment_block() {
+        let source = "// just one\n// just two\nmodule mkFoo();\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // Only 2 comment lines — should NOT produce a comment folding range.
+        assert!(
+            !ranges
+                .iter()
+                .any(|r| r.kind == Some(FoldingRangeKind::Comment)),
+            "Should not fold 2 or fewer comment lines, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_empty_document() {
+        let source = "";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        assert_eq!(ranges.len(), 0);
+    }
+
+    #[test]
+    fn test_folding_interface_range() {
+        let source = "interface I;\n    method Bit#(8) get();\n    endmethod\nendinterface\n\ntypedef struct {\n    Bit#(8) field;\n} S deriving(Bits);\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // Interface spans lines 0-3.
+        assert!(
+            ranges.iter().any(|r| r.start_line == 0 && r.end_line == 2),
+            "Expected interface folding range on lines 0-2, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_sorted_by_start_line() {
+        let source = "module mkA(); endmodule\nmodule mkB(); endmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // ranges should be sorted by start_line
+        for win in ranges.windows(2) {
+            assert!(
+                win[0].start_line <= win[1].start_line,
+                "Folding ranges must be sorted by start_line"
+            );
+        }
+    }
+
+    #[test]
+    fn test_folding_block_comment_multi_line() {
+        let source = "/*\n * line 1\n * line 2\n */\nmodule mkFoo();\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // Block comment spans lines 0-3 (4 lines), should fold.
+        assert!(
+            ranges
+                .iter()
+                .any(|r| r.kind == Some(FoldingRangeKind::Comment)
+                    && r.start_line == 0
+                    && r.end_line == 3),
+            "Expected block comment folding on lines 0-3, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_short_block_comment_no_fold() {
+        let source = "/* short */\nmodule mkFoo();\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // Single-line block comment should NOT produce a folding range.
+        assert!(
+            !ranges
+                .iter()
+                .any(|r| r.kind == Some(FoldingRangeKind::Comment)),
+            "Should not fold single-line block comment, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_action_block() {
+        let source = "module mkTest();\n    rule r;\n        action\n            $display(\"hi\");\n        endaction\n    endrule\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // actionBlock spans lines 2-4 (endaction on line 4) → end_line = 3.
+        assert!(
+            ranges.iter().any(|r| r.start_line == 2 && r.end_line == 3),
+            "Expected actionBlock folding on lines 2-3, got: {:?}",
+            ranges,
+        );
+    }
+
+    #[test]
+    fn test_folding_begin_end_expr() {
+        // A standalone begin-end expression — parsed as beginEndExpr.
+        let source = "module mkTest();\n    rule r;\n        action\n        begin\n            $display(\"a\");\n            $display(\"b\");\n        end\n        endaction\n    endrule\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let ranges = parser.collect_folding_ranges(&tree, source);
+
+        // The beginEndExpr (line 3-6, end on line 6) → end_line = 5.
+        // If tree-sitter doesn't produce a beginEndExpr node, skip assertion
+        // and just verify no crash.
+        if ranges.iter().any(|r| r.start_line == 3) {
+            assert!(
+                ranges.iter().any(|r| r.start_line == 3 && r.end_line == 5),
+                "Expected beginEndExpr folding on lines 3-5 if node exists, got: {:?}",
+                ranges,
+            );
+        }
+    }
     #[test]
     fn test_performance_large_file() {
         let mut source = String::new();

@@ -161,7 +161,7 @@ bluespec_lsp/
 | Feature | Status |
 |---------|--------|
 | Semantic tokens (syntax highlighting) | ❌ |
-| Code folding | ❌ |
+| Code folding | ✅ |
 | Code actions (quick fixes) | ❌ |
 | Signature help | ❌ |
 | Improved TextMate grammar | ❌ |
