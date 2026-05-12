@@ -8,13 +8,13 @@ use std::collections::HashMap;
 pub struct ConstantDef {
     /// The name of the constant (e.g., "FOO")
     pub name: String,
-    
+
     /// The value or expression (e.g., "2" or "TAdd#(FOO, 1)")
     pub value: String,
-    
+
     /// The range in the source file where this constant is defined
     pub range: Range,
-    
+
     /// Whether this is a simple numeric constant or a type function
     pub is_simple: bool,
 }
@@ -24,16 +24,16 @@ pub struct ConstantDef {
 pub struct ExpansionStep {
     /// The expression at this step
     pub expression: String,
-    
+
     /// Optional description of what happened
     pub description: Option<String>,
-    
+
     /// The result value after this step (if computable)
     pub value: Option<i64>,
-    
+
     /// Whether this step is a constant reference (not a numeric literal or operation)
     pub is_constant_ref: bool,
-    
+
     /// For constant references, the original definition expression (e.g., "TAdd#(BASE_WIDTH, 1)")
     pub original_definition: Option<String>,
 }
@@ -43,32 +43,32 @@ pub struct ExpansionStep {
 pub struct ExpansionResult {
     /// The original constant name
     pub name: String,
-    
+
     /// The final computed value
     pub final_value: i64,
-    
+
     /// The steps taken to reach the final value
     pub steps: Vec<ExpansionStep>,
-    
+
     /// Whether the expansion was successful
     pub success: bool,
-    
+
     /// Error message if expansion failed
     pub error: Option<String>,
 }
 
 impl ExpansionResult {
     /// Format the expansion as a trace string for display in hover
-    /// 
+    ///
     /// Example output (using ASCII art for tree structure):
     /// ```ignore
     /// BAR = 10
-    /// 
+    ///
     /// OFFSET = 7
     /// OFFSET = TSub#(BAR, 3)
     /// ├─ BAR = 10
     /// └─ Result: 10-3 = 7
-    /// 
+    ///
     /// TOTAL_WIDTH = 40
     /// TOTAL_WIDTH = TAdd#(ADDR_WIDTH, DATA_WIDTH)
     /// ├─ DATA_WIDTH = 8
@@ -77,55 +77,61 @@ impl ExpansionResult {
     /// ```
     pub fn format_trace(&self) -> String {
         let mut lines = Vec::new();
-        
+
         if !self.success {
             if let Some(ref error) = self.error {
                 return format!("❌ Expansion failed: {}", error);
             }
             return "❌ Expansion failed".to_string();
         }
-        
+
         // First line: name = final value
         lines.push(format!("{} = {}", self.name, self.final_value));
-        
+
         // Check if this is a simple numeric constant (first step is just a number)
         let is_simple_numeric = if let Some(first_step) = self.steps.first() {
-            first_step.expression.trim().chars().all(|c| c.is_numeric() || c.is_whitespace())
+            first_step
+                .expression
+                .trim()
+                .chars()
+                .all(|c| c.is_numeric() || c.is_whitespace())
         } else {
             false
         };
-        
+
         // For simple numeric constants, just show the value, no need for expansion trace
         if is_simple_numeric && self.steps.len() <= 2 {
             return lines.join("\n");
         }
-        
+
         // Second line: name = original definition (only if it's not a simple numeric)
         if let Some(first_step) = self.steps.first() {
             let first_expr = first_step.expression.trim();
             // Only show the definition line if it's different from the final value
             // and it's not just a numeric literal
-            if first_expr != self.final_value.to_string() && !first_expr.chars().all(|c| c.is_numeric() || c.is_whitespace()) {
+            if first_expr != self.final_value.to_string()
+                && !first_expr
+                    .chars()
+                    .all(|c| c.is_numeric() || c.is_whitespace())
+            {
                 lines.push(format!("{} = {}", self.name, first_expr));
             }
         }
-        
+
         // Collect constant reference steps and show with original definitions
         // Reverse to show from outer to inner (the order they were expanded)
-        let mut constant_refs: Vec<&ExpansionStep> = self.steps
-            .iter()
-            .filter(|s| s.is_constant_ref)
-            .collect();
+        let mut constant_refs: Vec<&ExpansionStep> =
+            self.steps.iter().filter(|s| s.is_constant_ref).collect();
         constant_refs.reverse();
-        
+
         // Show constant reference chain with original definitions
         // All constant refs use ├─ since Result will be the final └─
         for step in &constant_refs {
             let prefix = "├─ ";
-            
+
             // Extract the constant name from the expression (e.g., "BAR = 10" -> "BAR")
             let const_name = step.expression.split('=').next().unwrap_or("?").trim();
-            
+
             // Use original definition if available, otherwise use the value from expression
             if let Some(orig_def) = &step.original_definition {
                 // Only show if the original definition is different from what we'd show
@@ -139,10 +145,10 @@ impl ExpansionResult {
                 lines.push(format!("{}{} = {}", prefix, const_name, val));
             }
         }
-        
+
         // Build calculation expression from the chain
         let calc_expr = self.build_calculation_expression();
-        
+
         // Only show Result line if there are actual calculations (not just simple substitutions)
         if !calc_expr.is_empty() && calc_expr != self.final_value.to_string() {
             lines.push(format!("└─ Result: {} = {}", calc_expr, self.final_value));
@@ -150,20 +156,20 @@ impl ExpansionResult {
             // calc_expr equals final_value, just show the result
             lines.push(format!("└─ Result: {}", self.final_value));
         }
-        
+
         lines.join("\n")
     }
-    
+
     /// Build a concise calculation expression from the expansion chain
     fn build_calculation_expression(&self) -> String {
         // For simple cases, just show the final value
         if self.steps.len() <= 2 {
             return String::new();
         }
-        
+
         // Collect all type function operations with their resolved values
         let mut operations = Vec::new();
-        
+
         for step in &self.steps {
             if step.expression.contains('#') && step.value.is_some() {
                 if let Some(op_info) = self.extract_operation_info(step) {
@@ -171,11 +177,11 @@ impl ExpansionResult {
                 }
             }
         }
-        
+
         if operations.is_empty() {
             return String::new();
         }
-        
+
         // Build the calculation expression based on the operation type
         // For TMax/TMin, show as max(a,b) or min(a,b)
         // For arithmetic ops, build a clean expression
@@ -183,120 +189,93 @@ impl ExpansionResult {
             // Single operation - show it cleanly
             let op = &operations[0];
             match op.op_type.as_str() {
-                "TMax" => {
-                    if op.args.len() >= 2 {
-                        return format!("max({},{})", op.args[0], op.args[1]);
-                    }
+                "TMax" if op.args.len() >= 2 => {
+                    return format!("max({},{})", op.args[0], op.args[1]);
                 }
-                "TMin" => {
-                    if op.args.len() >= 2 {
-                        return format!("min({},{})", op.args[0], op.args[1]);
-                    }
+                "TMin" if op.args.len() >= 2 => {
+                    return format!("min({},{})", op.args[0], op.args[1]);
                 }
-                "TAdd" => {
-                    if op.args.len() >= 2 {
-                        return format!("{}+{}", op.args[0], op.args[1]);
-                    }
+                "TAdd" if op.args.len() >= 2 => {
+                    return format!("{}+{}", op.args[0], op.args[1]);
                 }
-                "TSub" => {
-                    if op.args.len() >= 2 {
-                        return format!("{}-{}", op.args[0], op.args[1]);
-                    }
+                "TSub" if op.args.len() >= 2 => {
+                    return format!("{}-{}", op.args[0], op.args[1]);
                 }
-                "TMul" => {
-                    if op.args.len() >= 2 {
-                        return format!("{}*{}", op.args[0], op.args[1]);
-                    }
+                "TMul" if op.args.len() >= 2 => {
+                    return format!("{}*{}", op.args[0], op.args[1]);
                 }
-                "TDiv" => {
-                    if op.args.len() >= 2 {
-                        return format!("{}/{}", op.args[0], op.args[1]);
-                    }
+                "TDiv" if op.args.len() >= 2 => {
+                    return format!("{}/{}", op.args[0], op.args[1]);
                 }
-                "TLog" => {
-                    if op.args.len() >= 1 {
-                        return format!("log2({})", op.args[0]);
-                    }
+                "TLog" if !op.args.is_empty() => {
+                    return format!("log2({})", op.args[0]);
                 }
-                "TExp" => {
-                    if op.args.len() >= 1 {
-                        return format!("2^{}", op.args[0]);
-                    }
+                "TExp" if !op.args.is_empty() => {
+                    return format!("2^{}", op.args[0]);
                 }
                 _ => {}
             }
         }
-        
+
         // For multiple nested operations, build a chained expression
         // Start from the innermost value and apply operations outward
-        let mut expr = operations.first()
+        let mut expr = operations
+            .first()
             .and_then(|op| op.args.first().cloned())
             .unwrap_or_else(|| self.final_value.to_string());
-        
+
         for op in &operations {
             match op.op_type.as_str() {
-                "TAdd" => {
-                    if op.args.len() >= 2 {
-                        expr = format!("({}+{})", expr, op.args[1]);
-                    }
+                "TAdd" if op.args.len() >= 2 => {
+                    expr = format!("({}+{})", expr, op.args[1]);
                 }
-                "TSub" => {
-                    if op.args.len() >= 2 {
-                        expr = format!("({}-{})", expr, op.args[1]);
-                    }
+                "TSub" if op.args.len() >= 2 => {
+                    expr = format!("({}-{})", expr, op.args[1]);
                 }
-                "TMul" => {
-                    if op.args.len() >= 2 {
-                        expr = format!("{}*{}", expr, op.args[1]);
-                    }
+                "TMul" if op.args.len() >= 2 => {
+                    expr = format!("{}*{}", expr, op.args[1]);
                 }
-                "TDiv" => {
-                    if op.args.len() >= 2 {
-                        expr = format!("{}/{}", expr, op.args[1]);
-                    }
+                "TDiv" if op.args.len() >= 2 => {
+                    expr = format!("{}/{}", expr, op.args[1]);
                 }
-                "TMax" => {
-                    if op.args.len() >= 2 {
-                        expr = format!("max({},{})", op.args[0], op.args[1]);
-                    }
+                "TMax" if op.args.len() >= 2 => {
+                    expr = format!("max({},{})", op.args[0], op.args[1]);
                 }
-                "TMin" => {
-                    if op.args.len() >= 2 {
-                        expr = format!("min({},{})", op.args[0], op.args[1]);
-                    }
+                "TMin" if op.args.len() >= 2 => {
+                    expr = format!("min({},{})", op.args[0], op.args[1]);
                 }
                 _ => {}
             }
         }
-        
+
         expr
     }
-    
+
     /// Extract operation information from a step
     fn extract_operation_info(&self, step: &ExpansionStep) -> Option<OperationInfo> {
         let expr = &step.expression;
-        
+
         // Parse the function name
         let func_name = expr.split('#').next()?;
-        
+
         // Extract arguments
         let args = self.extract_numeric_args(expr)?;
-        
+
         Some(OperationInfo {
             op_type: func_name.to_string(),
             args,
         })
     }
-    
+
     /// Extract numeric arguments from a type function expression
     /// Looks up constant references to get their numeric values
     fn extract_numeric_args(&self, expr: &str) -> Option<Vec<String>> {
         let start = expr.find('(')? + 1;
         let end = expr.find(')')?;
         let args_str = &expr[start..end];
-        
+
         let args: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
-        
+
         // Build a map of constant names to their values from ALL steps (not just constant_ref)
         let mut const_values: HashMap<&str, String> = HashMap::new();
         for step in &self.steps {
@@ -311,7 +290,7 @@ impl ExpansionResult {
                 }
             }
         }
-        
+
         let mut numeric_args = Vec::new();
         for arg in &args {
             // Try to parse as number directly
@@ -325,14 +304,14 @@ impl ExpansionResult {
                 numeric_args.push(arg.to_string());
             }
         }
-        
+
         if numeric_args.is_empty() {
             None
         } else {
             Some(numeric_args)
         }
     }
-    
+
     /// Format as a concise single-line summary
     pub fn format_summary(&self) -> String {
         if self.success {
@@ -351,29 +330,31 @@ struct OperationInfo {
 }
 
 /// Supported type functions for constant evaluation
+// T prefix is the BSV convention (TAdd, TSub, etc.) — keep for clarity
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TypeFunction {
     /// TAdd#(a, b) = a + b
     TAdd,
-    
+
     /// TSub#(a, b) = a - b
     TSub,
-    
+
     /// TMul#(a, b) = a * b
     TMul,
-    
+
     /// TDiv#(a, b) = a / b
     TDiv,
-    
+
     /// TLog#(n) = log2(n) (ceiling)
     TLog,
-    
+
     /// TExp#(n) = 2^n
     TExp,
-    
+
     /// TMax#(a, b) = max(a, b)
     TMax,
-    
+
     /// TMin#(a, b) = min(a, b)
     TMin,
 }
@@ -393,7 +374,7 @@ impl TypeFunction {
             _ => None,
         }
     }
-    
+
     /// Evaluate the type function with given arguments
     pub fn evaluate(&self, args: &[i64]) -> Option<i64> {
         match self {
@@ -463,7 +444,7 @@ impl TypeFunction {
             }
         }
     }
-    
+
     /// Get the name of this type function
     pub fn name(&self) -> &'static str {
         match self {
@@ -526,7 +507,7 @@ mod tests {
             success: true,
             error: None,
         };
-        
+
         let trace = result.format_trace();
         assert!(trace.contains("BAR"));
         assert!(trace.contains("3"));

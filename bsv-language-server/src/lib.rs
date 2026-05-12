@@ -6,7 +6,7 @@ mod utils;
 
 pub mod constant_expansion;
 
-pub use server::run;
 pub use errors::{Error, Result};
-pub use symbols::{Symbol, SymbolKind, SymbolTable};
 pub use parser::BsvParser;
+pub use server::run;
+pub use symbols::{Symbol, SymbolKind, SymbolTable};

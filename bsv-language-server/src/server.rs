@@ -1,14 +1,12 @@
-#![allow(deprecated)]
-
-use tower_lsp::{Client, LanguageServer, LspService};
-use tower_lsp::lsp_types::*;
+use crate::constant_expansion::{ConstantEvaluator, ConstantParser};
+use crate::{utils, BsvParser, SymbolTable};
 use async_trait::async_trait;
 use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::{BsvParser, SymbolTable, utils};
-use crate::constant_expansion::{ConstantParser, ConstantEvaluator};
+use tower_lsp::lsp_types::*;
+use tower_lsp::{Client, LanguageServer, LspService};
 
 type LspResult<T> = std::result::Result<T, tower_lsp::jsonrpc::Error>;
 
@@ -28,25 +26,25 @@ impl Backend {
             documents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     async fn update_document(&self, uri: &Url, text: &str) -> crate::Result<()> {
         // 保存文档内容
         let mut documents = self.documents.write().await;
         documents.insert(uri.clone(), text.to_string());
-        
+
         // 解析文档并更新符号表
         match self.parser.parse(text) {
             Ok(tree) => {
                 let symbols = self.parser.extract_symbols(&tree, text);
                 let symbols_len = symbols.len();
-                
+
                 let symbol_table = self.symbol_table.write().await;
                 symbol_table.clear_file(uri);
-                
+
                 for symbol in symbols {
                     symbol_table.add_symbol(uri, symbol);
                 }
-                
+
                 debug!("Updated symbols for {}: {} symbols found", uri, symbols_len);
                 Ok(())
             }
@@ -56,13 +54,14 @@ impl Backend {
             }
         }
     }
-    
+
     async fn get_document_symbols(&self, uri: &Url) -> Vec<SymbolInformation> {
         let symbol_table = self.symbol_table.read().await;
         let symbols = symbol_table.get_symbols(uri);
-        
-        symbols.into_iter().map(|symbol| {
-            SymbolInformation {
+
+        symbols
+            .into_iter()
+            .map(|symbol| SymbolInformation {
                 name: symbol.name,
                 kind: match symbol.kind {
                     crate::SymbolKind::Module => SymbolKind::MODULE,
@@ -76,19 +75,20 @@ impl Backend {
                     crate::SymbolKind::Unknown => SymbolKind::NULL,
                 },
                 tags: None,
-                deprecated: None, // 虽然弃用，但当前版本的lsp-types仍然需要
+                #[allow(deprecated)]
+                deprecated: None,
                 location: Location {
                     uri: symbol.uri.unwrap_or_else(|| uri.clone()),
                     range: symbol.range,
                 },
                 container_name: symbol.container,
-            }
-        }).collect()
+            })
+            .collect()
     }
-    
+
     async fn goto_definition(&self, uri: &Url, position: Position) -> Option<Location> {
         let symbol_table = self.symbol_table.read().await;
-        
+
         // 首先在当前文档中查找符号
         if let Some(symbol) = symbol_table.find_symbol_at_position(uri, position) {
             return Some(Location {
@@ -96,11 +96,11 @@ impl Backend {
                 range: symbol.range,
             });
         }
-        
+
         // 如果没有找到，尝试在其他文档中查找
         let documents = self.documents.read().await;
         let current_text = documents.get(uri)?;
-        
+
         // 提取光标位置的单词
         if let Some(line) = utils::get_line_content(current_text, position.line as usize) {
             if let Some(word) = self.extract_word_at_position(line, position.character as usize) {
@@ -115,43 +115,58 @@ impl Backend {
                 }
             }
         }
-        
+
         None
     }
-    
+
     fn extract_word_at_position(&self, line: &str, character: usize) -> Option<String> {
         if character >= line.len() {
             return None;
         }
-        
+
         let mut start = character;
         let mut end = character;
-        
+
         // 向左扩展
-        while start > 0 && (line.chars().nth(start - 1).map_or(false, |c| c.is_alphanumeric() || c == '_')) {
+        while start > 0
+            && (line
+                .chars()
+                .nth(start - 1)
+                .is_some_and(|c| c.is_alphanumeric() || c == '_'))
+        {
             start -= 1;
         }
-        
+
         // 向右扩展
-        while end < line.len() && (line.chars().nth(end).map_or(false, |c| c.is_alphanumeric() || c == '_')) {
+        while end < line.len()
+            && (line
+                .chars()
+                .nth(end)
+                .is_some_and(|c| c.is_alphanumeric() || c == '_'))
+        {
             end += 1;
         }
-        
+
         if start < end {
             Some(line[start..end].to_string())
         } else {
             None
         }
     }
-    
+
     fn find_word_start(&self, line: &str, character: usize) -> usize {
         let mut start = character;
-        
+
         // 向左扩展找到单词开始
-        while start > 0 && (line.chars().nth(start - 1).map_or(false, |c| c.is_alphanumeric() || c == '_')) {
+        while start > 0
+            && (line
+                .chars()
+                .nth(start - 1)
+                .is_some_and(|c| c.is_alphanumeric() || c == '_'))
+        {
             start -= 1;
         }
-        
+
         start
     }
 }
@@ -160,7 +175,7 @@ impl Backend {
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> LspResult<InitializeResult> {
         info!("Initializing BSV Language Server");
-        
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 // Use full document sync because hover and constant expansion
@@ -183,35 +198,36 @@ impl LanguageServer for Backend {
             ..Default::default()
         })
     }
-    
+
     async fn initialized(&self, _: InitializedParams) {
         info!("BSV Language Server initialized");
-        let _ = self.client
+        let _ = self
+            .client
             .log_message(MessageType::INFO, "BSV Language Server initialized")
             .await;
     }
-    
+
     async fn shutdown(&self) -> LspResult<()> {
         info!("Shutting down BSV Language Server");
         Ok(())
     }
-    
+
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
-        
+
         debug!("Document opened: {}", uri);
         if let Err(e) = self.update_document(&uri, &text).await {
             warn!("Error updating document {}: {}", uri, e);
         }
     }
-    
+
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         let changes = params.content_changes;
-        
+
         debug!("Document changed: {}", uri);
-        
+
         // With full sync, the change payload contains the full updated document text.
         if let Some(change) = changes.last() {
             if let Err(e) = self.update_document(&uri, &change.text).await {
@@ -219,64 +235,64 @@ impl LanguageServer for Backend {
             }
         }
     }
-    
+
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         debug!("Document closed: {}", uri);
-        
+
         // 清理文档内容
         let mut documents = self.documents.write().await;
         documents.remove(&uri);
-        
+
         // 清理符号表
         let symbol_table = self.symbol_table.write().await;
         symbol_table.clear_file(&uri);
     }
-    
+
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> LspResult<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        
+
         debug!("Goto definition request: {} at {:?}", uri, position);
-        
+
         match self.goto_definition(&uri, position).await {
             Some(location) => Ok(Some(GotoDefinitionResponse::Scalar(location))),
             None => Ok(None),
         }
     }
-    
+
     async fn document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> LspResult<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
-        
+
         debug!("Document symbols request: {}", uri);
-        
+
         let symbols = self.get_document_symbols(&uri).await;
-        
+
         if symbols.is_empty() {
             Ok(None)
         } else {
             Ok(Some(DocumentSymbolResponse::Flat(symbols)))
         }
     }
-    
+
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
     ) -> LspResult<Option<Vec<SymbolInformation>>> {
         let query = params.query.to_lowercase();
-        
+
         debug!("Workspace symbols request: {}", query);
-        
+
         let symbol_table = self.symbol_table.read().await;
         let all_symbols = symbol_table.get_all_symbols();
         let mut result = Vec::new();
-        
+
         for symbol in all_symbols {
             if symbol.name.to_lowercase().contains(&query) {
                 if let Some(symbol_uri) = &symbol.uri {
@@ -294,7 +310,8 @@ impl LanguageServer for Backend {
                             crate::SymbolKind::Unknown => SymbolKind::NULL,
                         },
                         tags: None,
-                        deprecated: None, // 虽然弃用，但当前版本的lsp-types仍然需要
+                        #[allow(deprecated)]
+                        deprecated: None,
                         location: Location {
                             uri: symbol_uri.clone(),
                             range: symbol.range,
@@ -304,17 +321,20 @@ impl LanguageServer for Backend {
                 }
             }
         }
-        
+
         result.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(Some(result))
     }
-    
+
     async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        
-        info!("Hover request: {} at line={}, char={}", uri, position.line, position.character);
-        
+
+        info!(
+            "Hover request: {} at line={}, char={}",
+            uri, position.line, position.character
+        );
+
         // First, try to find and expand a constant at this position
         let documents = self.documents.read().await;
         if let Some(text) = documents.get(&uri) {
@@ -325,11 +345,11 @@ impl LanguageServer for Backend {
                 .flat_map(|doc_text| const_parser.parse(doc_text))
                 .collect();
             let all_evaluator = ConstantEvaluator::new(all_constant_defs.clone());
-            
+
             // Method 1: Check if we're at a constant definition position
             if let Some(const_def) = const_parser.find_constant_at_position(text, position) {
                 info!("Found constant definition: {}", const_def.name);
-                
+
                 if let Some(result) = all_evaluator.expand(&const_def.name) {
                     let hover_text = if result.success {
                         format!(
@@ -341,27 +361,27 @@ impl LanguageServer for Backend {
                     } else {
                         format!(
                             "**{}** = `{}`\n\n⚠️ Could not fully expand",
-                            const_def.name,
-                            const_def.value
+                            const_def.name, const_def.value
                         )
                     };
-                    
+
                     let contents = HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,
                         value: hover_text,
                     });
-                    
+
                     return Ok(Some(Hover {
                         contents,
                         range: Some(const_def.range),
                     }));
                 }
             }
-            
+
             // Method 2: Check if the word at cursor is a constant name (usage position)
             if let Some(line) = utils::get_line_content(text, position.line as usize) {
                 info!("Line content: '{}'", line);
-                if let Some(word) = self.extract_word_at_position(line, position.character as usize) {
+                if let Some(word) = self.extract_word_at_position(line, position.character as usize)
+                {
                     info!("Extracted word: '{}'", word);
                     // Check if this word is a defined constant
                     let const_def = const_parser
@@ -369,7 +389,7 @@ impl LanguageServer for Backend {
                         .or_else(|| all_constant_defs.iter().find(|d| d.name == word).cloned());
                     if let Some(const_def) = const_def {
                         info!("Found constant by name: {}", const_def.name);
-                        
+
                         if let Some(result) = all_evaluator.expand(&word) {
                             let hover_text = if result.success {
                                 format!(
@@ -381,18 +401,18 @@ impl LanguageServer for Backend {
                             } else {
                                 format!(
                                     "**{}** = `{}`\n\n⚠️ Could not fully expand",
-                                    word,
-                                    const_def.value
+                                    word, const_def.value
                                 )
                             };
-                            
+
                             let contents = HoverContents::Markup(MarkupContent {
                                 kind: MarkupKind::Markdown,
                                 value: hover_text,
                             });
-                            
+
                             // Find word boundaries for range
-                            let word_start = self.find_word_start(line, position.character as usize);
+                            let word_start =
+                                self.find_word_start(line, position.character as usize);
                             let word_range = Range {
                                 start: Position {
                                     line: position.line,
@@ -403,14 +423,17 @@ impl LanguageServer for Backend {
                                     character: (word_start + word.len()) as u32,
                                 },
                             };
-                            
+
                             return Ok(Some(Hover {
                                 contents,
                                 range: Some(word_range),
                             }));
                         }
                     } else {
-                        info!("Constant '{}' not found in document or open documents", word);
+                        info!(
+                            "Constant '{}' not found in document or open documents",
+                            word
+                        );
                     }
                 } else {
                     info!("No word extracted at position {}", position.character);
@@ -422,10 +445,10 @@ impl LanguageServer for Backend {
             info!("Document not found: {}", uri);
         }
         drop(documents);
-        
+
         // Fall back to symbol hover
         let symbol_table = self.symbol_table.read().await;
-        
+
         if let Some(symbol) = symbol_table.find_symbol_at_position(&uri, position) {
             let contents = HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -445,27 +468,27 @@ impl LanguageServer for Backend {
                     }
                 ),
             });
-            
+
             return Ok(Some(Hover {
                 contents,
                 range: Some(symbol.range),
             }));
         }
-        
+
         Ok(None)
     }
-    
+
     async fn completion(&self, params: CompletionParams) -> LspResult<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        
+
         debug!("Completion request: {} at {:?}", uri, position);
-        
+
         let symbol_table = self.symbol_table.read().await;
         let symbols = symbol_table.get_symbols(&uri);
-        
+
         let mut items = Vec::new();
-        
+
         for symbol in symbols {
             let kind = match symbol.kind {
                 crate::SymbolKind::Module => CompletionItemKind::MODULE,
@@ -478,7 +501,7 @@ impl LanguageServer for Backend {
                 crate::SymbolKind::Rule => CompletionItemKind::EVENT,
                 crate::SymbolKind::Unknown => CompletionItemKind::TEXT,
             };
-            
+
             items.push(CompletionItem {
                 label: symbol.name,
                 kind: Some(kind),
@@ -486,16 +509,19 @@ impl LanguageServer for Backend {
                 ..Default::default()
             });
         }
-        
+
         Ok(Some(CompletionResponse::Array(items)))
     }
 }
 
-pub async fn run(stdin: impl tokio::io::AsyncRead + Unpin, stdout: impl tokio::io::AsyncWrite + Unpin) -> crate::Result<()> {
+pub async fn run(
+    stdin: impl tokio::io::AsyncRead + Unpin,
+    stdout: impl tokio::io::AsyncWrite + Unpin,
+) -> crate::Result<()> {
     let (service, socket) = LspService::build(Backend::new).finish();
-    
+
     let server = tower_lsp::Server::new(stdin, stdout, socket);
     server.serve(service).await;
-    
+
     Ok(())
 }

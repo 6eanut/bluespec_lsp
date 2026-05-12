@@ -1,7 +1,7 @@
-use std::error::Error;
-use log::info;
-use env_logger::{Builder, Target};
 use bsv_language_server::run;
+use env_logger::{Builder, Target};
+use log::info;
+use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -11,14 +11,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .target(Target::Stderr)
         .format_timestamp_micros()
         .init();
-    
+
     info!("Starting BSV Language Server...");
-    
+
     // 创建并运行服务器
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    
+
     run(stdin, stdout).await?;
-    
+
     Ok(())
 }

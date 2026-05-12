@@ -66,8 +66,7 @@ fn ensure_parser_files() {
         std::fs::remove_dir_all(tree_sitter_dir)
             .expect("Failed to remove existing src/tree_sitter/");
     }
-    copy_dir(&ts_bsv_headers, tree_sitter_dir)
-        .expect("Failed to copy tree_sitter headers");
+    copy_dir(&ts_bsv_headers, tree_sitter_dir).expect("Failed to copy tree_sitter headers");
 }
 
 fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
