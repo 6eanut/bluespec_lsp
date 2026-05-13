@@ -185,6 +185,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 definition_provider: Some(OneOf::Left(true)),
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -473,6 +474,30 @@ impl LanguageServer for Backend {
                 contents,
                 range: Some(symbol.range),
             }));
+        }
+
+        Ok(None)
+    }
+
+    async fn folding_range(
+        &self,
+        params: FoldingRangeParams,
+    ) -> LspResult<Option<Vec<FoldingRange>>> {
+        let uri = params.text_document.uri;
+
+        debug!("Folding range request: {}", uri);
+
+        let documents = self.documents.read().await;
+        if let Some(text) = documents.get(&uri) {
+            match self.parser.parse(text) {
+                Ok(tree) => {
+                    let ranges = self.parser.collect_folding_ranges(&tree, text);
+                    return Ok(Some(ranges));
+                }
+                Err(e) => {
+                    warn!("Failed to parse for folding range {}: {}", uri, e);
+                }
+            }
         }
 
         Ok(None)
