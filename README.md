@@ -143,7 +143,7 @@ bluespec_lsp/
 
 | Feature | Status |
 |---------|--------|
-| GitHub Actions CI (test/clippy/fmt) | ❌ |
+| GitHub Actions CI (test/clippy/fmt) | ✅ |
 | Multi-platform release workflow | ❌ |
 | Dependabot dependency updates | ❌ |
 
