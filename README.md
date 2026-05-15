@@ -144,7 +144,7 @@ bluespec_lsp/
 | Feature | Status |
 |---------|--------|
 | GitHub Actions CI (test/clippy/fmt) | ✅ |
-| Multi-platform release workflow | ❌ |
+| Multi-platform release workflow | ✅ |
 | Dependabot dependency updates | ❌ |
 
 ### Phase 4 — Core LSP Features
