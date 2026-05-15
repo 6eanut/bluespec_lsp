@@ -22,5 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI-Assisted Development workflow documentation
 
 ### Changed
+- Release workflow now builds both Windows x86_64 and macOS ARM64 VSIX via build matrix
+- Added `.vscodeignore` to reduce VSIX size
+- Added `repository` field to `package.json`
 
 ### Fixed

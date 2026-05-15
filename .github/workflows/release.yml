@@ -6,16 +6,31 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0, v0.1.0
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest  # Windows x86_64 environment
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            server_name: bsv-language-server.exe
+            vsix_suffix: win32-x64
+            rust_toolchain_target: x86_64-pc-windows-msvc
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            server_name: bsv-language-server
+            vsix_suffix: darwin-arm64
+            rust_toolchain_target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write  # Required to create GitHub Releases
+      contents: read
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Get full history for version info
+        fetch-depth: 0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -28,7 +43,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
-        targets: x86_64-pc-windows-msvc  # Windows x86_64 target
+        targets: ${{ matrix.rust_toolchain_target }}
 
     - name: Install tree-sitter-cli
       run: cargo install tree-sitter-cli --version 0.24.7
@@ -44,50 +59,59 @@ jobs:
         npm run compile
 
     - name: Build Rust server
+      shell: bash
       run: |
         cd bsv-language-server
-        # Add Windows target
-        rustup target add x86_64-pc-windows-msvc
-        # Build release version for Windows
-        cargo build --release --target x86_64-pc-windows-msvc
-        # Verify build result (PowerShell syntax)
-        if (!(Test-Path "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe")) {
-          Write-Host "Error: Server executable not found"
-          exit 1
-        }
-        Get-ChildItem "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe"
+        cargo build --release --target ${{ matrix.target }}
+        test -f "target/${{ matrix.target }}/release/${{ matrix.server_name }}"
 
     - name: Prepare server directory for VSIX
+      shell: bash
       run: |
         cd bsv-language-server
-        # Create server directory
-        New-Item -ItemType Directory -Path server -Force
-        # Copy Windows executable to server directory (PowerShell syntax)
-        Copy-Item "target/x86_64-pc-windows-msvc/release/bsv-language-server.exe" -Destination "server/"
-        # Verify copied file
-        Get-ChildItem server/
+        mkdir -p server
+        cp "target/${{ matrix.target }}/release/${{ matrix.server_name }}" server/
+        ls -la server/
 
     - name: Install vsce
-      run: |
-        cd bsv-language-server
-        npm install -g @vscode/vsce
+      shell: bash
+      run: npm install -g @vscode/vsce
 
     - name: Package VSIX
+      shell: bash
       run: |
         cd bsv-language-server
-        # Install all dependencies including devDependencies
         npm install
-        # Package extension with bundled server
-        vsce package
-        # List generated VSIX file (PowerShell syntax)
-        Get-ChildItem *.vsix
+        vsce package --out "bsv-language-server-${{ matrix.vsix_suffix }}-${{ github.ref_name }}.vsix"
+        ls -la *.vsix
+
+    - name: Upload VSIX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: vsix-${{ matrix.vsix_suffix }}
+        path: bsv-language-server/*.vsix
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all VSIX artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: vsix-*
+        merge-multiple: true
+
+    - name: List downloaded VSIX files
+      run: ls -la *.vsix
 
     - name: Get version from tag
       id: get_version
       run: |
-        # Extract version from tag (remove v prefix)
-        $version = "${{ github.ref_name }}".Substring(1)
-        echo "version=$version" >> $env:GITHUB_OUTPUT
+        version="${GITHUB_REF_NAME#v}"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "Tag version: $version"
 
     - name: Create GitHub Release
@@ -103,18 +127,19 @@ jobs:
           - Constant expansion with hover documentation
           - Syntax highlighting and error recovery
           - Windows x86_64 native support
+          - macOS ARM64 (Apple Silicon) native support
 
           ### Installation
-          1. Download the `.vsix` file below
+          1. Download the `.vsix` file for your platform
           2. Open VS Code
           3. Go to Extensions view (Ctrl+Shift+X)
           4. Click "..." menu and select "Install from VSIX..."
           5. Select the downloaded file
 
           ### Notes
-          - This release includes the BSV language server executable for Windows x86_64
-          - The extension will automatically use the bundled server - no additional configuration needed
+          - `bsv-language-server-win32-x64-*.vsix` → Windows x86_64
+          - `bsv-language-server-darwin-arm64-*.vsix` → macOS Apple Silicon
         draft: false
         prerelease: false
         files: |
-          bsv-language-server/*.vsix
+          *.vsix
