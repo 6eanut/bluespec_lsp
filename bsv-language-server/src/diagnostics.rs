@@ -15,7 +15,9 @@ pub struct DiagnosticCollector;
 impl DiagnosticCollector {
     /// Collect all syntax error diagnostics from the given parse tree.
     ///
-    /// Returns an empty vector if the source is valid.
+    /// Returns an empty vector if the source is valid. Automatically filters
+    /// out known false positives:
+    /// - `#define` preprocessor directives (not part of tree-sitter grammar)
     pub fn collect(tree: &Tree, source: &str) -> Vec<Diagnostic> {
         let root = tree.root_node();
         let mut error_nodes = Vec::new();
@@ -27,8 +29,25 @@ impl DiagnosticCollector {
 
         error_nodes
             .into_iter()
+            .filter(|node| !is_false_positive(*node, source))
             .map(|node| error_node_to_diagnostic(node, source))
             .collect()
+    }
+}
+
+/// Check whether an ERROR node is a known false positive that should be
+/// excluded from diagnostics.
+///
+/// Currently filters:
+/// - `#define` directives: the BSV tree-sitter grammar has no rules for
+///   preprocessor directives, so tokens inside `#define` lines parse as
+///   individual ERROR nodes. These are valid BSV code, not syntax errors.
+fn is_false_positive(node: Node, source: &str) -> bool {
+    let line = node.start_position().row;
+    if let Some(line_text) = source.lines().nth(line) {
+        line_text.trim_start().starts_with("#define")
+    } else {
+        false
     }
 }
 
@@ -171,6 +190,27 @@ endmodule
         assert!(
             diags.is_empty(),
             "Valid code should have no diagnostics, got: {:?}",
+            diags
+        );
+    }
+
+    #[test]
+    fn test_define_directives_are_not_false_positives() {
+        // #define directives are not part of the BSV tree-sitter grammar,
+        // so they parse as ERROR nodes. They should be filtered out.
+        let source = r#"
+#define 32 ADDR_WIDTH;
+#define 8 DATA_WIDTH;
+#define TAdd#(ADDR_WIDTH, 1) INCREMENTED;
+
+module mkTest();
+    Reg#(Bit#(32)) counter <- mkReg(0);
+endmodule
+"#;
+        let diags = collect_diagnostics(source);
+        assert!(
+            diags.is_empty(),
+            "#define directives should not produce diagnostics, got: {:?}",
             diags
         );
     }
