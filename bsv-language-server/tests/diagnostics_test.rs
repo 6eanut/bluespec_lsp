@@ -65,14 +65,13 @@ fn test_broken_fixture_diagnostic_mentions_syntax() {
 fn test_broken_fixture_error_range() {
     let diags = collect_fixture_diagnostics("broken.bsv");
     assert!(!diags.is_empty());
-    // The ERROR node is coarse (no $.ERROR rules in grammar) — it may span
-    // a wide recovery region. Verify the error covers the `endm` on line 13.
+    // The narrowed range targets the `endm` keyword on line 12 (0-indexed).
     let covers_error = diags
         .iter()
-        .any(|d| d.range.start.line <= 13 && d.range.end.line >= 13);
+        .any(|d| d.range.start.line == 12 && d.range.end.line == 12);
     assert!(
         covers_error,
-        "Expected some diagnostic to cover line 13 (the 'endm' line), got ranges: {:?}",
+        "Expected diagnostic range targeted at line 12 (the 'endm' line), got ranges: {:?}",
         diags.iter().map(|d| d.range).collect::<Vec<_>>()
     );
 }

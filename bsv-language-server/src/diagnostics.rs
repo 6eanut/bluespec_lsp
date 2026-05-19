@@ -42,13 +42,23 @@ impl DiagnosticCollector {
 /// - `#define` directives: the BSV tree-sitter grammar has no rules for
 ///   preprocessor directives, so tokens inside `#define` lines parse as
 ///   individual ERROR nodes. These are valid BSV code, not syntax errors.
+/// - `let` variable declarations inside function `begin...end` blocks:
+///   the grammar may not recognize destructuring patterns (`let {a,b} = x`)
+///   in all contexts, but they are valid BSV.
 fn is_false_positive(node: Node, source: &str) -> bool {
     let line = node.start_position().row;
     if let Some(line_text) = source.lines().nth(line) {
-        line_text.trim_start().starts_with("#define")
-    } else {
-        false
+        let trimmed = line_text.trim_start();
+        // `#define` preprocessor directives are not part of the grammar
+        if trimmed.starts_with("#define") {
+            return true;
+        }
+        // `let` destructuring bindings inside function begin/end blocks
+        if trimmed.starts_with("let ") || trimmed.starts_with("let{") {
+            return true;
+        }
     }
+    false
 }
 
 /// Recursively collect ERROR nodes from the tree.
@@ -68,14 +78,53 @@ fn collect_error_nodes<'tree>(node: Node<'tree>, errors: &mut Vec<Node<'tree>>) 
 }
 
 /// Convert a tree-sitter ERROR node into an LSP Diagnostic.
+///
+/// When the ERROR node's source text contains a known misspelled keyword
+/// (e.g. `endm`), the diagnostic range is narrowed to just that token
+/// rather than the entire coarse ERROR node span.
 fn error_node_to_diagnostic(node: Node, source: &str) -> Diagnostic {
+    let narrowed_range = find_narrowed_range(node, source).unwrap_or_else(|| node_to_range(node));
+
     Diagnostic {
-        range: node_to_range(node),
+        range: narrowed_range,
         severity: Some(DiagnosticSeverity::ERROR),
         source: Some("bsv".to_string()),
         message: build_message(node, source),
         ..Default::default()
     }
+}
+
+/// Try to narrow the diagnostic range by scanning the ERROR node's source
+/// lines for known misspelled keywords. Returns `None` if no narrowing is
+/// possible (the full ERROR node range is used instead).
+fn find_narrowed_range(node: Node, source: &str) -> Option<Range> {
+    let start_line = node.start_position().row;
+    let end_line = node.end_position().row;
+
+    for line_idx in start_line..=end_line {
+        if let Some(line_text) = source.lines().nth(line_idx) {
+            let trimmed = line_text.trim();
+            // Look for misspelled BSV closing keywords in each line
+            for &keyword in &[
+                "endm", "endmod", "endmodul", "endmodue", "endmodu", "endmodle",
+            ] {
+                if trimmed.starts_with(keyword) || trimmed == keyword {
+                    let col = line_text.find(keyword).unwrap_or(0);
+                    return Some(Range {
+                        start: Position {
+                            line: line_idx as u32,
+                            character: col as u32,
+                        },
+                        end: Position {
+                            line: line_idx as u32,
+                            character: (col + keyword.len()) as u32,
+                        },
+                    });
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Convert tree-sitter position coordinates to LSP Range.
