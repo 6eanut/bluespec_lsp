@@ -46,6 +46,10 @@ impl Backend {
                 let symbols = self.parser.extract_symbols(&tree, text);
                 let symbols_len = symbols.len();
 
+                // Extract references
+                let references = self.parser.extract_references(&tree, text);
+                let refs_len = references.len();
+
                 let symbol_table = self.symbol_table.write().await;
                 symbol_table.clear_file(uri);
 
@@ -53,7 +57,14 @@ impl Backend {
                     symbol_table.add_symbol(uri, symbol);
                 }
 
-                debug!("Updated symbols for {}: {} symbols found", uri, symbols_len);
+                for reference in references {
+                    symbol_table.add_reference(uri, reference);
+                }
+
+                debug!(
+                    "Updated symbols for {}: {} symbols, {} references found",
+                    uri, symbols_len, refs_len
+                );
                 Ok(())
             }
             Err(e) => {
@@ -218,6 +229,7 @@ impl LanguageServer for Backend {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                references_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: Some(false),
                     trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
@@ -565,6 +577,68 @@ impl LanguageServer for Backend {
         }
 
         Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> LspResult<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        debug!("References request: {} at {:?}", uri, position);
+
+        let symbol_table = self.symbol_table.read().await;
+
+        // Find the symbol name at cursor position.
+        let name_to_find: Option<String> = {
+            if let Some(sym) = symbol_table.find_symbol_at_position(&uri, position) {
+                Some(sym.name)
+            } else {
+                // Fallback: extract word at cursor from document text.
+                let documents = self.documents.read().await;
+                documents.get(&uri).and_then(|text| {
+                    let line = utils::get_line_content(text, position.line as usize)?;
+                    self.extract_word_at_position(line, position.character as usize)
+                })
+            }
+        };
+
+        let name = match name_to_find {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        // Collect all locations: declarations + references for this name.
+        let mut locations: Vec<Location> = Vec::new();
+
+        // Add declaration locations (from symbol table)
+        for symbol in symbol_table.find_symbol_by_name(&name) {
+            if let Some(sym_uri) = symbol.uri {
+                locations.push(Location {
+                    uri: sym_uri,
+                    range: symbol.range,
+                });
+            }
+        }
+
+        // Add reference locations (from reference index)
+        for reference in symbol_table.find_references_by_name(&name) {
+            if let Some(ref_uri) = reference.uri {
+                locations.push(Location {
+                    uri: ref_uri,
+                    range: reference.range,
+                });
+            }
+        }
+
+        // Sort by URI then by range for deterministic output
+        locations.sort_by(|a, b| {
+            a.uri
+                .to_string()
+                .cmp(&b.uri.to_string())
+                .then_with(|| a.range.start.line.cmp(&b.range.start.line))
+                .then_with(|| a.range.start.character.cmp(&b.range.start.character))
+        });
+
+        Ok(Some(locations))
     }
 }
 

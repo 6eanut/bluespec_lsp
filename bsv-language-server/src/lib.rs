@@ -10,4 +10,4 @@ pub mod constant_expansion;
 pub use errors::{Error, Result};
 pub use parser::BsvParser;
 pub use server::run;
-pub use symbols::{Symbol, SymbolKind, SymbolTable};
+pub use symbols::{Reference, Symbol, SymbolKind, SymbolTable};
