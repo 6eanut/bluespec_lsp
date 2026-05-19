@@ -734,6 +734,133 @@ impl BsvParser {
         None
     }
 
+    // ── Reference extraction ──────────────────────────────────────────
+
+    /// Extract all identifier usage sites (references) from the parse tree.
+    ///
+    /// Walks every `identifier` node in the tree and classifies it as a
+    /// reference or a declaration by examining its parent (and grandparent)
+    /// node kinds. Only reference-typed identifiers are returned.
+    ///
+    /// Results are deduplicated by `(range, name)` — important because
+    /// identifiers inside ERROR nodes may also appear as children of
+    /// well-formed nodes.
+    pub fn extract_references(&self, tree: &Tree, source: &str) -> Vec<crate::Reference> {
+        let mut refs = Vec::new();
+        let root = tree.root_node();
+        self.collect_references(root, source, &mut refs);
+        refs.sort_by(|a, b| {
+            a.range
+                .start
+                .line
+                .cmp(&b.range.start.line)
+                .then_with(|| a.range.start.character.cmp(&b.range.start.character))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        refs.dedup_by(|a, b| a.range == b.range && a.name == b.name);
+        refs
+    }
+
+    /// Recursively collect reference identifiers from the AST.
+    fn collect_references(&self, node: Node, source: &str, refs: &mut Vec<crate::Reference>) {
+        if node.kind() == "identifier" {
+            if !self.is_declaration_context(node) {
+                if let Ok(name) = node.utf8_text(source.as_bytes()) {
+                    if !name.is_empty() {
+                        refs.push(crate::Reference {
+                            name: name.to_string(),
+                            range: self.node_to_range(&node),
+                            uri: None,
+                        });
+                    }
+                }
+            }
+            return; // identifier has no children worth recursing into
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_references(child, source, refs);
+        }
+    }
+
+    /// Determine whether an `identifier` node is a declaration (rather than a
+    /// reference) by inspecting its parent (and grandparent) node kinds.
+    fn is_declaration_context(&self, node: Node) -> bool {
+        let parent = match node.parent() {
+            Some(p) => p,
+            None => return false,
+        };
+        let parent_kind = parent.kind();
+
+        // ── Category 1: Direct declaration parents ────────────────────
+        if matches!(
+            parent_kind,
+            "moduleProto"
+                | "functionType"
+                | "subFunctionType"
+                | "methodProto"
+                | "methodDef"
+                | "rule"
+                | "functionFormal"
+                | "subFunctionFormal"
+                | "methodFormal"
+                | "moduleFormalParam"
+                | "typedefEnumElement"
+                | "typedefEnum"
+                | "structMember"
+                | "unionMember"
+                | "exportItem"
+                | "forInit"
+                | "varDecl"
+                | "varDo"
+                | "varDeclDo"
+        ) {
+            return true;
+        }
+
+        // ── Category 2: lValue + declaration grandparent ──────────────
+        if parent_kind == "lValue" {
+            if let Some(gp) = parent.parent() {
+                if matches!(
+                    gp.kind(),
+                    "varDecl" | "varInit" | "varDo" | "forInit" | "moduleInst"
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        // ── Category 3: typeIde in typedef ────────────────────────────
+        if parent_kind == "typeIde" {
+            if let Some(gp) = parent.parent() {
+                if gp.kind() == "typeDefType" {
+                    return true;
+                }
+            }
+        }
+
+        // ── Category 4: typeclassIde + grandparent typeclassDef ───────
+        if parent_kind == "typeclassIde" {
+            if let Some(gp) = parent.parent() {
+                if gp.kind() == "typeclassDef" {
+                    return true;
+                }
+            }
+        }
+
+        // ── Category 5: packageIde — declaration unless inside import ─
+        if parent_kind == "packageIde" {
+            if let Some(gp) = parent.parent() {
+                if gp.kind() != "importItem" {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn node_to_range(&self, node: &Node) -> lsp_types::Range {
         lsp_types::Range {
             start: lsp_types::Position {
@@ -1059,6 +1186,128 @@ endfunction
 
         assert_eq!(symbols.len(), 100);
         assert!(duration.as_millis() < 100); // 应该在 100ms 内完成
+    }
+
+    // ── Reference extraction tests ─────────────────────────────────────
+
+    #[test]
+    fn test_extract_references_from_fixture() {
+        let source = include_str!("../test_fixtures/references.bsv");
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let refs = parser.extract_references(&tree, source);
+
+        // Expected references: (name, line)
+        let expected = vec![
+            ("Vector", 2),   // import Vector::*
+            ("Reg", 5),      // Reg#(Bit#(32))
+            ("Bit", 5),      // Bit#(32) in type
+            ("mkReg", 5),    // <- mkReg(0)
+            ("Bit", 10),     // Bit#(32) in function return type
+            ("Bit", 10),     // Bit#(32) in function parameter
+            ("Bit", 10),     // Bit#(32) in second function parameter
+            ("add", 14),     // add(val, 5) - function call reference
+            ("mkHello", 18), // mkHello hello_inst - module instance reference
+        ];
+
+        for (name, line) in &expected {
+            assert!(
+                refs.iter()
+                    .any(|r| r.name == *name && r.range.start.line == *line),
+                "Expected reference '{}' on line {}, but not found. Available refs: {:?}",
+                name,
+                line,
+                refs.iter()
+                    .map(|r| format!("'{}'@{}", r.name, r.range.start.line))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn test_no_false_positive_declarations_as_references() {
+        let source = include_str!("../test_fixtures/references.bsv");
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let refs = parser.extract_references(&tree, source);
+
+        // These are DECLARATIONS and should NOT appear in references
+        let not_refs = vec![
+            ("TestRefs", 0), // package name
+            ("mkHello", 4),  // module definition
+            ("val", 5),      // declaration via lValue/varInit
+            ("hello", 6),    // rule name
+            ("add", 10),     // function definition (parent=functionType)
+            ("a", 10),       // function formal parameter
+            ("b", 10),       // function formal parameter
+            ("result", 14),  // let binding (parent=varDecl or lValue/varVar)
+            ("mkWorld", 17), // module definition
+        ];
+
+        for (name, line) in &not_refs {
+            assert!(
+                !refs.iter().any(|r| r.name == *name && r.range.start.line == *line),
+                "Declaration '{}' on line {} was incorrectly classified as a reference. refs at that line: {:?}",
+                name, line,
+                refs.iter().filter(|r| r.range.start.line == *line).map(|r| &r.name).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_references_from_correct_fixture() {
+        let source = include_str!("../test_fixtures/correct.bsv");
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let refs = parser.extract_references(&tree, source);
+
+        // correct.bsv has: mkReg as a reference
+        assert!(
+            refs.iter().any(|r| r.name == "mkReg"),
+            "Expected mkReg as a reference in correct.bsv, got: {:?}",
+            refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
+        // Exported names in exportItem should NOT be references
+        assert!(
+            !refs
+                .iter()
+                .any(|r| r.name == "mkTest" && r.range.start.line == 5),
+            "exportItem 'mkTest' on line 5 should not be a reference"
+        );
+        // Module instances should produce references
+        assert!(
+            refs.iter()
+                .any(|r| r.name == "mkTest" && r.range.start.line == 19),
+            "Module instance 'mkTest' on line 19 should be a reference, got: {:?}",
+            refs.iter()
+                .map(|r| format!("'{}'@{}", r.name, r.range.start.line))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_reference_deduplication() {
+        let source = "module m();\n    let x = y;\n    let z = y;\nendmodule\n";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let refs = parser.extract_references(&tree, source);
+
+        // 'y' should appear twice (once on each line), not duplicated at same position
+        let y_count = refs.iter().filter(|r| r.name == "y").count();
+        assert_eq!(
+            y_count, 2,
+            "Expected exactly 2 references to 'y', got {}",
+            y_count
+        );
+    }
+
+    #[test]
+    fn test_empty_source_no_references() {
+        let source = "";
+        let parser = BsvParser::default();
+        let tree = parser.parse(source).expect("parse failed");
+        let refs = parser.extract_references(&tree, source);
+        assert_eq!(refs.len(), 0);
     }
 }
 
